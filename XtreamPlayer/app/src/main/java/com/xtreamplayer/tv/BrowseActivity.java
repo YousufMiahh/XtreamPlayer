@@ -1,19 +1,14 @@
 package com.xtreamplayer.tv;
 
+import android.annotation.SuppressLint;
 import android.app.Activity;
-import android.content.Intent;
 import android.os.Bundle;
-import android.text.Editable;
-import android.text.InputType;
-import android.text.TextWatcher;
 import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
-import android.view.inputmethod.EditorInfo;
 import android.widget.AbsListView;
 import android.widget.AdapterView;
-import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.GridView;
 import android.widget.ImageView;
@@ -21,161 +16,214 @@ import android.widget.LinearLayout;
 import android.widget.ListView;
 import android.widget.ProgressBar;
 import android.widget.TextView;
-import android.widget.Toast;
+
+import androidx.media3.common.PlaybackException;
+import androidx.media3.common.Player;
+import androidx.media3.exoplayer.ExoPlayer;
+import androidx.media3.ui.PlayerView;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Locale;
-import java.util.Map;
 
 /**
- * Categories on the left, content in the middle (list for Live TV, poster grid for
- * Movies/Series) and, for Live TV, a now/next panel on the right.
+ * Categories on the left, content on the right: a channel list with a Now/Next panel for Live TV,
+ * a poster grid for Movies and Series.
  */
+@SuppressLint("UnsafeOptInUsageError")
 public class BrowseActivity extends Activity {
     private static final String FAV = "__fav";
     private static final String ALL = "__all";
+    private static final String RECENT = "__recent";
+    private static final String CONTINUE = "__continue";
 
     private String type;
     private Prefs prefs;
     private XtreamApi api;
+    private boolean live;
 
     private ListView catList;
     private AbsListView content;
     private Adapters.TextRows catAdapter;
     private Adapters.ItemAdapter contentAdapter;
-    private TextView header, emptyText;
+    private TextView header, count, emptyText;
     private ProgressBar spinner;
-    private EditText search;
 
     // live info panel
     private ImageView infoLogo;
-    private TextView infoName, infoNow, infoNext;
+    private PlayerView previewView;
+    private ExoPlayer preview;
+    private Item previewItem;
+    private boolean resumed;
+    private final Runnable pendingPreview = new Runnable() { public void run() { startPreview(); } };
+    private TextView infoName, infoNowTitle, infoNowTime, infoDesc, infoNext;
+    private FrameLayout infoProgress;
 
-    private final Map<String, List<Item>> cache = new HashMap<>();
     private Item currentCat;
     private int loadToken = 0;
     private final Runnable pendingCat = new Runnable() { public void run() { openSelectedCategory(); } };
     private final Runnable pendingEpg = new Runnable() { public void run() { loadEpgForSelection(); } };
-    private final Runnable pendingSearch = new Runnable() { public void run() { applySearch(); } };
 
     @Override
     protected void onCreate(Bundle b) {
         super.onCreate(b);
+        Ui.init(this);
         type = getIntent().getStringExtra("type");
         if (type == null) type = Item.LIVE;
         prefs = new Prefs(this);
         api = new XtreamApi(prefs);
-        boolean live = Item.LIVE.equals(type);
+        live = Item.LIVE.equals(type);
 
-        FrameLayout root = new FrameLayout(this);
-        root.setBackgroundColor(Ui.BG);
+        LinearLayout root = new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setBackground(Ui.screenBackground());
+        root.addView(TopBar.build(this, live ? TopBar.LIVE : Item.MOVIE.equals(type) ? TopBar.MOVIES : TopBar.SERIES));
+
         LinearLayout cols = new LinearLayout(this);
         cols.setOrientation(LinearLayout.HORIZONTAL);
-        int pad = Ui.dp(this, 20);
-        cols.setPadding(pad, pad, pad, pad);
-        root.addView(cols, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        cols.setClipChildren(false);
+        cols.setPadding(Ui.dp(this, 48), Ui.dp(this, 16), Ui.dp(this, 48), Ui.dp(this, 24));
+        root.addView(cols, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
 
-        // ---- left: title, search, categories
-        LinearLayout left = new LinearLayout(this);
-        left.setOrientation(LinearLayout.VERTICAL);
-        left.setBackground(Ui.rounded(this, Ui.PANEL, 0, 14));
-        int lp = Ui.dp(this, 12);
-        left.setPadding(lp, lp, lp, lp);
-        String title = live ? "Live TV" : Item.MOVIE.equals(type) ? "Movies" : "Series";
-        TextView t = Ui.title(this, title, 26);
-        t.setPadding(Ui.dp(this, 6), 0, 0, Ui.dp(this, 10));
-        left.addView(t);
-        search = Ui.input(this, "Search " + title.toLowerCase(Locale.UK) + "…", InputType.TYPE_CLASS_TEXT);
-        search.setImeOptions(EditorInfo.IME_ACTION_SEARCH);
-        left.addView(search);
+        // ---- categories
         catList = new ListView(this);
-        catList.setSelector(Ui.listSelector(this));
         catList.setDivider(null);
-        catList.setPadding(0, Ui.dp(this, 8), 0, 0);
-        catList.setClipToPadding(false);
+        catList.setDividerHeight(Ui.dp(this, 2));
+        catList.setVerticalScrollBarEnabled(false);
+        catList.setPadding(Ui.dp(this, 4), Ui.dp(this, 8), Ui.dp(this, 4), Ui.dp(this, 8));
+        Adapters.prepare(catList);
         catAdapter = new Adapters.TextRows(this);
-        catList.setAdapter(catAdapter);
-        left.addView(catList, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
-        cols.addView(left, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, live ? 1f : 1.05f));
+        catAdapter.attach(catList);
+        cols.addView(catList, new LinearLayout.LayoutParams(Ui.dp(this, 300), ViewGroup.LayoutParams.MATCH_PARENT));
 
-        // ---- middle: content
+        // ---- content column
         LinearLayout mid = new LinearLayout(this);
         mid.setOrientation(LinearLayout.VERTICAL);
-        mid.setPadding(Ui.dp(this, 16), 0, Ui.dp(this, 4), 0);
-        header = Ui.oneLine(Ui.text(this, "", 18, Ui.MUTED));
-        header.setPadding(Ui.dp(this, 6), Ui.dp(this, 6), 0, Ui.dp(this, 10));
-        mid.addView(header);
+        mid.setClipChildren(false);
+        mid.setPadding(Ui.dp(this, 36), 0, 0, 0);
+        LinearLayout head = new LinearLayout(this);
+        head.setOrientation(LinearLayout.HORIZONTAL);
+        head.setGravity(Gravity.BOTTOM);
+        header = Ui.oneLine(Ui.title(this, "", 34));
+        count = Ui.medium(this, "", 17, Ui.TEXT3);
+        count.setPadding(Ui.dp(this, 14), 0, 0, Ui.dp(this, 4));
+        head.addView(header, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, 0));
+        head.addView(count);
+        head.setPadding(Ui.dp(this, 8), Ui.dp(this, 4), 0, Ui.dp(this, 14));
+        mid.addView(head);
+
         FrameLayout contentFrame = new FrameLayout(this);
+        contentFrame.setClipChildren(false);
         if (live) {
             ListView lv = new ListView(this);
-            lv.setSelector(Ui.listSelector(this));
             lv.setDivider(null);
-            contentAdapter = new Adapters.Channels(this, prefs);
-            lv.setAdapter(contentAdapter);
+            lv.setDividerHeight(Ui.dp(this, 2));
+            lv.setVerticalScrollBarEnabled(false);
             content = lv;
+            contentAdapter = new Adapters.Channels(this, prefs);
         } else {
             GridView g = new GridView(this);
             g.setNumColumns(GridView.AUTO_FIT);
-            g.setColumnWidth(Ui.dp(this, 152));
-            g.setStretchMode(GridView.STRETCH_COLUMN_WIDTH);
-            g.setVerticalSpacing(Ui.dp(this, 6));
-            g.setSelector(Ui.gridSelector(this));
-            g.setDrawSelectorOnTop(true);
-            contentAdapter = new Adapters.Posters(this, prefs);
-            g.setAdapter(contentAdapter);
+            g.setColumnWidth(Ui.dp(this, 178));
+            g.setStretchMode(GridView.STRETCH_SPACING_UNIFORM);
+            g.setVerticalSpacing(Ui.dp(this, 10));
+            g.setVerticalScrollBarEnabled(false);
+            g.setPadding(0, Ui.dp(this, 10), 0, Ui.dp(this, 30));
             content = g;
+            contentAdapter = new Adapters.Posters(this, prefs);
         }
+        Adapters.prepare(content, new View.OnFocusChangeListener() {
+            public void onFocusChange(View v, boolean has) {
+                if (!has) stopPreview();
+                else if (live) schedulePreview();
+            }
+        });
+        contentAdapter.attach(content);
         contentFrame.addView(content, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-        emptyText = Ui.text(this, "", 18, Ui.MUTED);
+        emptyText = Ui.text(this, "", 19, Ui.TEXT2);
         emptyText.setGravity(Gravity.CENTER);
         contentFrame.addView(emptyText, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         spinner = new ProgressBar(this);
-        contentFrame.addView(spinner, new FrameLayout.LayoutParams(Ui.dp(this, 56), Ui.dp(this, 56), Gravity.CENTER));
+        spinner.setIndeterminateTintList(android.content.res.ColorStateList.valueOf(Ui.TEXT2));
+        contentFrame.addView(spinner, new FrameLayout.LayoutParams(Ui.dp(this, 48), Ui.dp(this, 48), Gravity.CENTER));
         mid.addView(contentFrame, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
-        TextView hint = Ui.oneLine(Ui.text(this, "OK: play   ·   ☰ Menu or hold OK: add/remove favourite   ·   Back: categories", 13, Ui.MUTED));
-        hint.setPadding(Ui.dp(this, 6), Ui.dp(this, 8), 0, 0);
-        mid.addView(hint);
-        cols.addView(mid, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, live ? 1.7f : 3.4f));
+        cols.addView(mid, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1));
 
-        // ---- right: now/next (live only)
-        if (live) {
-            LinearLayout right = new LinearLayout(this);
-            right.setOrientation(LinearLayout.VERTICAL);
-            right.setBackground(Ui.rounded(this, Ui.PANEL, 0, 14));
-            int rp = Ui.dp(this, 18);
-            right.setPadding(rp, rp, rp, rp);
-            infoLogo = new ImageView(this);
-            infoLogo.setScaleType(ImageView.ScaleType.FIT_START);
-            right.addView(infoLogo, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(this, 90)));
-            infoName = Ui.title(this, "", 22);
-            infoName.setPadding(0, Ui.dp(this, 14), 0, Ui.dp(this, 14));
-            right.addView(infoName);
-            TextView nowL = Ui.text(this, "NOW", 12, Ui.ACCENT);
-            right.addView(nowL);
-            infoNow = Ui.text(this, "", 17, Ui.TEXT);
-            infoNow.setPadding(0, Ui.dp(this, 2), 0, Ui.dp(this, 14));
-            right.addView(infoNow);
-            right.addView(Ui.text(this, "NEXT", 12, Ui.ACCENT));
-            infoNext = Ui.text(this, "", 17, Ui.MUTED);
-            infoNext.setPadding(0, Ui.dp(this, 2), 0, 0);
-            right.addView(infoNext);
-            cols.addView(right, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1.1f));
-        }
+        if (live) cols.addView(buildInfoPanel(), panelParams());
 
         setContentView(root);
         wire();
         loadCategories();
     }
 
+    private LinearLayout.LayoutParams panelParams() {
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(Ui.dp(this, 440), ViewGroup.LayoutParams.MATCH_PARENT);
+        lp.leftMargin = Ui.dp(this, 36);
+        return lp;
+    }
+
+    private View buildInfoPanel() {
+        LinearLayout p = new LinearLayout(this);
+        p.setOrientation(LinearLayout.VERTICAL);
+        p.setBackground(Ui.rounded(this, Ui.SURFACE, 0, 22));
+        int pad = Ui.dp(this, 28);
+        p.setPadding(pad, pad, pad, pad);
+
+        FrameLayout logoBox = new FrameLayout(this);
+        logoBox.setBackground(Ui.rounded(this, Ui.SURFACE_LO, 0, 16));
+        logoBox.setClipToOutline(true);
+        previewView = new PlayerView(this);
+        previewView.setUseController(false);
+        previewView.setShutterBackgroundColor(0x00000000);
+        previewView.setVisibility(View.INVISIBLE);
+        logoBox.addView(previewView, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        infoLogo = new ImageView(this);
+        infoLogo.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        int lp = Ui.dp(this, 26);
+        infoLogo.setPadding(lp, lp, lp, lp);
+        logoBox.addView(infoLogo, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        p.addView(logoBox, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(this, 216)));
+
+        infoName = Ui.lines(Ui.title(this, "", 26), 2);
+        infoName.setPadding(0, Ui.dp(this, 22), 0, Ui.dp(this, 20));
+        p.addView(infoName);
+
+        TextView nowL = Ui.medium(this, "NOW", 13, Ui.TEXT3);
+        nowL.setLetterSpacing(0.12f);
+        p.addView(nowL);
+        infoNowTitle = Ui.lines(Ui.medium(this, "", 20, Ui.TEXT), 2);
+        infoNowTitle.setTypeface(Ui.semibold());
+        infoNowTitle.setPadding(0, Ui.dp(this, 6), 0, Ui.dp(this, 8));
+        p.addView(infoNowTitle);
+        LinearLayout timeRow = new LinearLayout(this);
+        timeRow.setGravity(Gravity.CENTER_VERTICAL);
+        infoNowTime = Ui.medium(this, "", 15, Ui.TEXT2);
+        timeRow.addView(infoNowTime);
+        infoProgress = new FrameLayout(this);
+        LinearLayout.LayoutParams pp = new LinearLayout.LayoutParams(0, Ui.dp(this, 4), 1);
+        pp.leftMargin = Ui.dp(this, 14);
+        timeRow.addView(infoProgress, pp);
+        p.addView(timeRow);
+        infoDesc = Ui.lines(Ui.text(this, "", 15, Ui.TEXT2), 4);
+        infoDesc.setPadding(0, Ui.dp(this, 12), 0, Ui.dp(this, 22));
+        p.addView(infoDesc);
+
+        TextView nextL = Ui.medium(this, "UP NEXT", 13, Ui.TEXT3);
+        nextL.setLetterSpacing(0.12f);
+        p.addView(nextL);
+        infoNext = Ui.lines(Ui.medium(this, "", 17, Ui.TEXT2), 2);
+        infoNext.setPadding(0, Ui.dp(this, 6), 0, 0);
+        p.addView(infoNext);
+        return p;
+    }
+
     private void wire() {
         catList.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             public void onItemSelected(AdapterView<?> p, View v, int pos, long id) {
+                Adapters.refresh(catList);
                 Async.MAIN.removeCallbacks(pendingCat);
-                Async.MAIN.postDelayed(pendingCat, 400);
+                Async.MAIN.postDelayed(pendingCat, 350);
             }
-            public void onNothingSelected(AdapterView<?> p) {}
+            public void onNothingSelected(AdapterView<?> p) { Adapters.refresh(catList); }
         });
         catList.setOnItemClickListener(new AdapterView.OnItemClickListener() {
             public void onItemClick(AdapterView<?> p, View v, int pos, long id) {
@@ -192,35 +240,12 @@ public class BrowseActivity extends Activity {
                 return true;
             }
         });
-        if (infoName != null) {
-            content.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
-                public void onItemSelected(AdapterView<?> p, View v, int pos, long id) {
-                    Item it = contentAdapter.getItem(pos);
-                    infoName.setText(it.name);
-                    infoNow.setText("…");
-                    infoNext.setText("");
-                    ImageLoader.load(infoLogo, it.icon, 300, 180);
-                    Async.MAIN.removeCallbacks(pendingEpg);
-                    Async.MAIN.postDelayed(pendingEpg, 450);
-                }
-                public void onNothingSelected(AdapterView<?> p) {}
-            });
-        }
-        search.addTextChangedListener(new TextWatcher() {
-            public void beforeTextChanged(CharSequence s, int a, int b, int c) {}
-            public void onTextChanged(CharSequence s, int a, int b, int c) {}
-            public void afterTextChanged(Editable s) {
-                Async.MAIN.removeCallbacks(pendingSearch);
-                Async.MAIN.postDelayed(pendingSearch, 600);
+        content.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            public void onItemSelected(AdapterView<?> p, View v, int pos, long id) {
+                Adapters.refresh(content);
+                if (live) showChannelInfo(pos);
             }
-        });
-        search.setOnEditorActionListener(new TextView.OnEditorActionListener() {
-            public boolean onEditorAction(TextView v, int action, KeyEvent e) {
-                Async.MAIN.removeCallbacks(pendingSearch);
-                applySearch();
-                content.requestFocus();
-                return false;
-            }
+            public void onNothingSelected(AdapterView<?> p) { Adapters.refresh(content); }
         });
     }
 
@@ -229,24 +254,25 @@ public class BrowseActivity extends Activity {
     private void loadCategories() {
         spinner.setVisibility(View.VISIBLE);
         Async.run(new Async.Work<List<Item>>() {
-            public List<Item> run() throws Exception { return api.categories(type); }
+            public List<Item> run() throws Exception { return Repo.categories(api, type); }
         }, new Async.Done<List<Item>>() {
             public void done(List<Item> cats, Exception e) {
                 if (isFinishing()) return;
                 spinner.setVisibility(View.GONE);
                 List<Item> all = new ArrayList<>();
-                Item fav = new Item(Item.CATEGORY, FAV, "★ Favourites");
-                all.add(fav);
-                all.add(new Item(Item.CATEGORY, ALL, "All"));
+                all.add(new Item(Item.CATEGORY, FAV, "Favourites"));
+                if (live) all.add(new Item(Item.CATEGORY, RECENT, "Recent Channels"));
+                else all.add(new Item(Item.CATEGORY, CONTINUE, "Continue Watching"));
+                all.add(new Item(Item.CATEGORY, ALL, live ? "All Channels" : "All"));
+                int firstReal = all.size();
                 if (cats != null) all.addAll(cats);
                 catAdapter.set(all);
-                if (e != null) {
-                    emptyText.setText("Couldn't load categories:\n" + Async.message(e));
-                }
-                // Start on favourites if there are any, otherwise the first real category.
-                int start = !prefs.favs(type).isEmpty() ? 0 : (all.size() > 2 ? 2 : 1);
-                catList.setSelection(start);
+                if (e != null) emptyText.setText("Couldn't load categories\n" + Async.message(e));
+                int start = !prefs.favs(type).isEmpty() ? 0
+                        : !specialList(all.get(1).id).isEmpty() ? 1
+                        : (all.size() > firstReal ? firstReal : firstReal - 1);
                 catList.requestFocus();
+                catList.setSelection(start);
                 openCategory(all.get(start), start, false);
             }
         });
@@ -256,92 +282,53 @@ public class BrowseActivity extends Activity {
         int pos = catList.getSelectedItemPosition();
         if (pos < 0 || pos >= catAdapter.getCount()) return;
         Item c = catAdapter.getItem(pos);
-        if (currentCat != null && c.id.equals(currentCat.id) && search.getText().length() == 0) return;
+        if (currentCat != null && c.id.equals(currentCat.id)) return;
         openCategory(c, pos, false);
     }
 
     private void openCategory(final Item cat, int pos, final boolean focusContent) {
-        if (search.getText().length() > 0) {
-            search.setText("");
-            Async.MAIN.removeCallbacks(pendingSearch);
-        }
         currentCat = cat;
         catAdapter.active = pos;
         catAdapter.notifyDataSetChanged();
         header.setText(cat.name);
-        loadList(cat.id, new Done() {
-            public void done(List<Item> list) {
-                show(cat.name, list);
-                if (focusContent && !list.isEmpty()) {
-                    content.requestFocus();
-                    content.setSelection(0);
-                }
-            }
-        });
-    }
-
-    interface Done { void done(List<Item> list); }
-
-    private void loadList(final String catId, final Done done) {
+        count.setText("");
         final int token = ++loadToken;
-        if (FAV.equals(catId)) {
-            done.done(prefs.favs(type));
-            return;
-        }
-        List<Item> cached = cache.get(catId);
-        if (cached != null) {
-            done.done(cached);
+        if (isSpecial(cat.id)) {
+            show(specialList(cat.id), focusContent);
             return;
         }
         contentAdapter.set(null);
         emptyText.setText("");
         spinner.setVisibility(View.VISIBLE);
         Async.run(new Async.Work<List<Item>>() {
-            public List<Item> run() throws Exception { return api.streams(type, ALL.equals(catId) ? null : catId); }
+            public List<Item> run() throws Exception { return Repo.streams(api, type, ALL.equals(cat.id) ? null : cat.id); }
         }, new Async.Done<List<Item>>() {
             public void done(List<Item> list, Exception e) {
                 if (isFinishing() || token != loadToken) return;
                 spinner.setVisibility(View.GONE);
                 if (e != null) {
                     contentAdapter.set(null);
-                    emptyText.setText("Couldn't load this list:\n" + Async.message(e));
+                    emptyText.setText("Couldn't load this list\n" + Async.message(e));
                     return;
                 }
-                cache.put(catId, list);
-                done.done(list);
+                show(list, focusContent);
             }
         });
     }
 
-    private void show(String title, List<Item> list) {
+    private void show(List<Item> list, boolean focusContent) {
         spinner.setVisibility(View.GONE);
         contentAdapter.set(list);
-        header.setText(title + "   ·   " + list.size() + (list.size() == 1 ? " item" : " items"));
+        count.setText(list.size() == 1 ? "1 item" : list.size() + " items");
+        boolean fav = currentCat != null && FAV.equals(currentCat.id);
         emptyText.setText(list.isEmpty()
-                ? (currentCat != null && FAV.equals(currentCat.id) && search.getText().length() == 0
-                    ? "No favourites yet.\nPress ☰ Menu (or hold OK) on anything to add it."
-                    : "Nothing here")
+                ? (fav ? "No favourites yet\nPress ☰ or hold OK on anything to add it." : "Nothing here yet")
                 : "");
-    }
-
-    // ------------------------------------------------------------ search
-
-    private void applySearch() {
-        final String q = search.getText().toString().trim().toLowerCase(Locale.UK);
-        if (q.isEmpty()) {
-            if (currentCat != null) openCategory(currentCat, catAdapter.active, false);
-            return;
+        if (live) showChannelInfo(list.isEmpty() ? -1 : 0);
+        if (focusContent && !list.isEmpty()) {
+            content.requestFocus();
+            content.setSelection(0);
         }
-        catAdapter.active = -1;
-        catAdapter.notifyDataSetChanged();
-        header.setText("Searching…");
-        loadList(ALL, new Done() {
-            public void done(List<Item> all) {
-                List<Item> hits = new ArrayList<>();
-                for (Item it : all) if (it.name.toLowerCase(Locale.UK).contains(q)) hits.add(it);
-                show("Search: \"" + q + "\"", hits);
-            }
-        });
     }
 
     // ------------------------------------------------------------ actions
@@ -349,50 +336,82 @@ public class BrowseActivity extends Activity {
     private void open(int pos) {
         List<Item> list = contentAdapter.items();
         if (pos < 0 || pos >= list.size()) return;
-        Item it = list.get(pos);
-        if (Item.SERIES.equals(it.type)) {
-            Intent i = new Intent(this, SeriesActivity.class);
-            i.putExtra("series", it.toJson().toString());
-            startActivity(i);
-            return;
-        }
-        if (Item.LIVE.equals(it.type)) {
-            Queue.set(list);
-            startActivity(new Intent(this, PlayerActivity.class).putExtra("index", pos));
-        } else {
-            List<Item> single = new ArrayList<>();
-            single.add(it);
-            Queue.set(single);
-            startActivity(new Intent(this, PlayerActivity.class).putExtra("index", 0));
-        }
+        Open.item(this, list.get(pos), list);
     }
 
     private void toggleFav(int pos) {
         if (pos < 0 || pos >= contentAdapter.getCount()) return;
         Item it = contentAdapter.getItem(pos);
-        boolean now = prefs.toggleFav(it);
-        Toast.makeText(this, (now ? "Added to favourites: " : "Removed from favourites: ") + it.name, Toast.LENGTH_SHORT).show();
-        if (currentCat != null && FAV.equals(currentCat.id) && search.getText().length() == 0) {
-            show(currentCat.name, prefs.favs(type));
-            if (contentAdapter.getCount() > 0) content.setSelection(Math.min(pos, contentAdapter.getCount() - 1));
+        Open.toggleFav(this, prefs, it);
+        if (currentCat != null && FAV.equals(currentCat.id)) {
+            List<Item> l = prefs.favs(type);
+            contentAdapter.set(l);
+            count.setText(l.size() + " items");
+            if (!l.isEmpty()) content.setSelection(Math.min(pos, l.size() - 1));
         } else {
             contentAdapter.notifyDataSetChanged();
         }
     }
 
+    private void showChannelInfo(int pos) {
+        if (infoName == null) return;
+        if (pos < 0 || pos >= contentAdapter.getCount()) {
+            infoName.setText("");
+            infoNowTitle.setText("");
+            infoNowTime.setText("");
+            infoDesc.setText("");
+            infoNext.setText("");
+            infoProgress.removeAllViews();
+            infoLogo.setImageDrawable(null);
+            return;
+        }
+        Item it = contentAdapter.getItem(pos);
+        infoName.setText(it.name);
+        infoNowTitle.setText("");
+        infoNowTime.setText("");
+        infoDesc.setText("");
+        infoNext.setText("");
+        infoProgress.removeAllViews();
+        ImageLoader.load(infoLogo, it.icon, 400, 240);
+        if (previewItem != it) {
+            stopPreview();
+            if (content.hasFocus()) schedulePreview();
+        }
+        Async.MAIN.removeCallbacks(pendingEpg);
+        Async.MAIN.postDelayed(pendingEpg, 400);
+    }
+
     private void loadEpgForSelection() {
         int pos = content.getSelectedItemPosition();
-        if (pos < 0 || pos >= contentAdapter.getCount()) return;
+        if (pos < 0) pos = 0;
+        if (pos >= contentAdapter.getCount()) return;
         final Item it = contentAdapter.getItem(pos);
-        Async.run(new Async.Work<String[]>() {
-            public String[] run() { return api.shortEpg(it.id); }
-        }, new Async.Done<String[]>() {
-            public void done(String[] r, Exception e) {
+        Async.run(new Async.Work<List<XtreamApi.Programme>>() {
+            public List<XtreamApi.Programme> run() { return api.epg(it.id); }
+        }, new Async.Done<List<XtreamApi.Programme>>() {
+            public void done(List<XtreamApi.Programme> r, Exception e) {
                 if (isFinishing()) return;
                 int cur = content.getSelectedItemPosition();
-                if (cur < 0 || cur >= contentAdapter.getCount() || contentAdapter.getItem(cur) != it) return;
-                infoNow.setText(r == null || r[0] == null ? "No guide information" : r[0]);
-                infoNext.setText(r == null || r[1] == null ? "" : r[1]);
+                if (cur < 0) cur = 0;
+                if (cur >= contentAdapter.getCount() || contentAdapter.getItem(cur) != it) return;
+                if (r == null || r.isEmpty()) {
+                    infoNowTitle.setText("No guide information");
+                    infoNowTitle.setTextColor(Ui.TEXT2);
+                    return;
+                }
+                XtreamApi.Programme now = r.get(0);
+                infoNowTitle.setTextColor(Ui.TEXT);
+                infoNowTitle.setText(now.title);
+                infoNowTime.setText(now.timeRange());
+                infoProgress.removeAllViews();
+                if (now.start > 0) infoProgress.addView(Cards.progressBar(BrowseActivity.this, now.progress()),
+                        new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+                infoDesc.setText(now.desc == null ? "" : now.desc);
+                if (r.size() > 1) {
+                    XtreamApi.Programme next = r.get(1);
+                    String t = next.timeRange();
+                    infoNext.setText((t.isEmpty() ? "" : t.substring(0, Math.min(5, t.length())) + "   ") + next.title);
+                }
             }
         });
     }
@@ -412,25 +431,103 @@ public class BrowseActivity extends Activity {
             catList.requestFocus();
             return;
         }
-        if (search.getText().length() > 0) {
-            search.setText("");
-            catList.requestFocus();
-            return;
-        }
         super.onBackPressed();
+        overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out);
     }
 
     @Override
     protected void onResume() {
         super.onResume();
-        contentAdapter.notifyDataSetChanged(); // refresh ★ marks after returning
+        resumed = true;
+        if (currentCat != null && isSpecial(currentCat.id)) {
+            contentAdapter.set(specialList(currentCat.id));
+        } else {
+            contentAdapter.notifyDataSetChanged();
+        }
+        if (live && content.hasFocus()) schedulePreview();
+    }
+
+    @Override
+    protected void onPause() {
+        resumed = false;
+        releasePreview(); // free the connection before the full-screen player starts
+        super.onPause();
+    }
+
+    private boolean isSpecial(String id) {
+        return FAV.equals(id) || RECENT.equals(id) || CONTINUE.equals(id);
+    }
+
+    private List<Item> specialList(String id) {
+        if (FAV.equals(id)) return prefs.favs(type);
+        if (RECENT.equals(id)) return prefs.history(true);
+        if (CONTINUE.equals(id)) return Item.MOVIE.equals(type) ? prefs.continueMovies() : prefs.continueSeries();
+        return new ArrayList<>();
+    }
+
+    // ------------------------------------------------------------ live preview
+
+    private void schedulePreview() {
+        Async.MAIN.removeCallbacks(pendingPreview);
+        if (!live || prefs.previewMode() == 0) return;
+        Async.MAIN.postDelayed(pendingPreview, 1100); // only once you pause on a channel
+    }
+
+    private void startPreview() {
+        if (!resumed || !content.hasFocus()) return;
+        int pos = content.getSelectedItemPosition();
+        if (pos < 0 || pos >= contentAdapter.getCount()) return;
+        Item it = contentAdapter.getItem(pos);
+        if (it == previewItem && preview != null) return;
+        if (preview == null) {
+            preview = PlayerFactory.create(this, prefs);
+            preview.addListener(new Player.Listener() {
+                @Override
+                public void onRenderedFirstFrame() {
+                    previewView.setVisibility(View.VISIBLE);
+                    infoLogo.animate().alpha(0f).setDuration(250).start();
+                }
+
+                @Override
+                public void onPlayerError(PlaybackException error) { stopPreview(); }
+            });
+            previewView.setPlayer(preview);
+        }
+        previewItem = it;
+        preview.setVolume(prefs.previewMode() == 2 ? 1f : 0f);
+        preview.setMediaItem(PlayerFactory.media(api.playUrl(it, prefs.liveFormat())));
+        preview.prepare();
+        preview.setPlayWhenReady(true);
+    }
+
+    private void stopPreview() {
+        Async.MAIN.removeCallbacks(pendingPreview);
+        previewItem = null;
+        if (preview != null) {
+            preview.stop();
+            preview.clearMediaItems();
+        }
+        if (previewView != null) previewView.setVisibility(View.INVISIBLE);
+        if (infoLogo != null) {
+            infoLogo.animate().cancel();
+            infoLogo.setAlpha(1f);
+        }
+    }
+
+    private void releasePreview() {
+        stopPreview();
+        if (preview != null) {
+            previewView.setPlayer(null);
+            preview.release();
+            preview = null;
+        }
     }
 
     @Override
     protected void onDestroy() {
         Async.MAIN.removeCallbacks(pendingCat);
         Async.MAIN.removeCallbacks(pendingEpg);
-        Async.MAIN.removeCallbacks(pendingSearch);
+        releasePreview();
         super.onDestroy();
     }
 }

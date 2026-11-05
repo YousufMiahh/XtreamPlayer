@@ -125,6 +125,8 @@ public class XtreamApi {
                     if (Item.MOVIE.equals(type)) it.info = rating(m.get("rating"));
                 }
                 if (it.id == null || it.id.isEmpty()) return;
+                it.categoryId = m.get("category_id");
+                it.added = parseLong(Item.SERIES.equals(type) ? m.get("last_modified") : m.get("added"));
                 if (it.icon != null && it.icon.isEmpty()) it.icon = null;
                 out.add(it);
             }
@@ -138,26 +140,62 @@ public class XtreamApi {
         return new JSONObject(body);
     }
 
-    /** @return {"Now: ...", "Next: ..."} (either may be null). */
-    public String[] shortEpg(String streamId) {
-        String[] res = new String[2];
+    public JSONObject vodInfo(String vodId) throws Exception {
+        String body = Http.string(api("get_vod_info", "&vod_id=" + Uri.encode(vodId)), ua).trim();
+        if (!body.startsWith("{")) return new JSONObject();
+        return new JSONObject(body);
+    }
+
+    /** A TV guide entry. Times are unix seconds. */
+    public static class Programme {
+        public String title, desc;
+        public long start, stop;
+
+        public String timeRange() {
+            if (start <= 0) return "";
+            SimpleDateFormat hm = new SimpleDateFormat("HH:mm", Locale.UK);
+            return hm.format(new Date(start * 1000L)) + " – " + hm.format(new Date(stop * 1000L));
+        }
+
+        /** 0..1 how far through the programme we are now. */
+        public float progress() {
+            long now = System.currentTimeMillis() / 1000L;
+            if (stop <= start) return 0;
+            return Math.max(0f, Math.min(1f, (now - start) / (float) (stop - start)));
+        }
+    }
+
+    /** Current and upcoming programmes (may be empty). */
+    public List<Programme> epg(String streamId) {
+        List<Programme> out = new ArrayList<>();
         try {
-            String body = Http.string(api("get_short_epg", "&stream_id=" + Uri.encode(streamId) + "&limit=4"), ua);
+            String body = Http.string(api("get_short_epg", "&stream_id=" + Uri.encode(streamId) + "&limit=6"), ua);
             JSONObject o = new JSONObject(body);
             JSONArray a = o.optJSONArray("epg_listings");
-            if (a == null) return res;
+            if (a == null) return out;
             long now = System.currentTimeMillis() / 1000L;
-            SimpleDateFormat hm = new SimpleDateFormat("HH:mm", Locale.UK);
-            int found = 0;
-            for (int i = 0; i < a.length() && found < 2; i++) {
+            for (int i = 0; i < a.length(); i++) {
                 JSONObject e = a.getJSONObject(i);
-                long start = e.optLong("start_timestamp", 0), stop = e.optLong("stop_timestamp", 0);
-                if (stop != 0 && stop < now) continue;
-                String title = b64(e.optString("title", ""));
-                String time = start > 0 ? hm.format(new Date(start * 1000L)) + "–" + hm.format(new Date(stop * 1000L)) + "  " : "";
-                res[found++] = time + title;
+                Programme p = new Programme();
+                p.start = e.optLong("start_timestamp", 0);
+                p.stop = e.optLong("stop_timestamp", 0);
+                if (p.stop != 0 && p.stop < now) continue;
+                p.title = b64(e.optString("title", ""));
+                p.desc = b64(e.optString("description", ""));
+                out.add(p);
             }
         } catch (Exception ignored) {
+        }
+        return out;
+    }
+
+    /** @return {"Now ...", "Next ..."} (either may be null). */
+    public String[] shortEpg(String streamId) {
+        String[] res = new String[2];
+        List<Programme> l = epg(streamId);
+        for (int i = 0; i < 2 && i < l.size(); i++) {
+            String t = l.get(i).timeRange();
+            res[i] = (t.isEmpty() ? "" : t + "  ") + l.get(i).title;
         }
         return res;
     }
@@ -211,6 +249,14 @@ public class XtreamApi {
             r.endArray();
         } finally {
             c.disconnect();
+        }
+    }
+
+    static long parseLong(String s) {
+        try {
+            return s == null ? 0 : Long.parseLong(s.trim());
+        } catch (NumberFormatException e) {
+            return 0;
         }
     }
 

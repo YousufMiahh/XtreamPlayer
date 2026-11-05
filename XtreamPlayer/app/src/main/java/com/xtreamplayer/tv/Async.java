@@ -13,7 +13,7 @@ public final class Async {
     public interface Work<T> { T run() throws Exception; }
     public interface Done<T> { void done(T result, Exception error); }
 
-    private static final ExecutorService POOL = Executors.newFixedThreadPool(3);
+    private static final ExecutorService POOL = Executors.newFixedThreadPool(6);
     public static final Handler MAIN = new Handler(Looper.getMainLooper());
 
     public static <T> void run(final Work<T> work, final Done<T> done) {

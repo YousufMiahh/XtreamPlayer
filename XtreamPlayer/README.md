@@ -1,6 +1,6 @@
-# Xtream Player for Fire TV
+# YM Player for Fire TV
 
-A simple Xtream Codes IPTV player for Fire TV / Fire Stick (and Android TV). It's built for the remote control.
+A simple, Apple TV-style Xtream Codes IPTV player for Fire TV / Fire Stick (and Android TV). It's built for the remote control.
 
 - **Live TV**: categories, channel list with logos, Now/Next guide, ▲▼ to change channel while watching, OK for channel info
 - **Movies**: poster grid by category, resumes where you stopped

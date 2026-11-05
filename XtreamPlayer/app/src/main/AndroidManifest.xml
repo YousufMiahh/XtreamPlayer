@@ -7,6 +7,12 @@
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
     <uses-feature android:name="android.software.leanback" android:required="false" />
 
+    <queries>
+        <package android:name="com.amazon.firetv.youtube" />
+        <package android:name="com.google.android.youtube.tv" />
+        <package android:name="com.google.android.youtube" />
+    </queries>
+
     <application
         android:allowBackup="false"
         android:banner="@drawable/banner"
@@ -30,6 +36,10 @@
         <activity android:name=".HomeActivity" />
         <activity android:name=".BrowseActivity" android:windowSoftInputMode="stateHidden|adjustNothing" />
         <activity android:name=".SeriesActivity" />
+        <activity android:name=".MovieActivity" />
+        <activity android:name=".SearchActivity" android:windowSoftInputMode="stateVisible|adjustNothing" />
+        <activity android:name=".SettingsActivity" />
+        <activity android:name=".TrailerActivity" android:configChanges="orientation|screenSize|keyboardHidden" />
         <activity
             android:name=".PlayerActivity"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|navigation"

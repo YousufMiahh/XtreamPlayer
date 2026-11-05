@@ -1,12 +1,14 @@
 package com.xtreamplayer.tv;
 
 import android.content.Context;
-import android.graphics.Typeface;
+import android.graphics.Color;
+import android.graphics.drawable.ColorDrawable;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.AbsListView;
 import android.widget.BaseAdapter;
+import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
@@ -14,19 +16,192 @@ import android.widget.TextView;
 import java.util.ArrayList;
 import java.util.List;
 
+/** List/grid cells with tvOS-style focus, plus the adapters that use them. */
 public final class Adapters {
     private Adapters() {}
 
-    /** Base adapter over a list of Items. */
+    /** A cell that knows how to draw itself focused ("hot") or not. */
+    public interface Hot {
+        void setHot(boolean hot, boolean animate);
+    }
+
+    /** Re-applies focus styling to the visible children of a list/grid. Call on selection/focus changes. */
+    public static void refresh(AbsListView list) {
+        int first = list.getFirstVisiblePosition();
+        int sel = list.getSelectedItemPosition();
+        boolean focus = list.hasFocus();
+        for (int i = 0; i < list.getChildCount(); i++) {
+            View ch = list.getChildAt(i);
+            if (ch instanceof Hot) ((Hot) ch).setHot(focus && first + i == sel, true);
+        }
+    }
+
+    /** Standard setup for a TV list: no default selector, keep styling in sync while scrolling/focusing. */
+    public static void prepare(final AbsListView list) {
+        prepare(list, null);
+    }
+
+    public static void prepare(final AbsListView list, final View.OnFocusChangeListener extra) {
+        list.setSelector(new ColorDrawable(Color.TRANSPARENT));
+        list.setClipToPadding(false);
+        list.setClipChildren(false);
+        list.setOnScrollListener(new AbsListView.OnScrollListener() {
+            public void onScrollStateChanged(AbsListView v, int s) {}
+            public void onScroll(AbsListView v, int a, int b, int c) { refresh(list); }
+        });
+        list.setOnFocusChangeListener(new View.OnFocusChangeListener() {
+            public void onFocusChange(View v, boolean has) {
+                refresh(list);
+                if (extra != null) extra.onFocusChange(v, has);
+            }
+        });
+    }
+
+    // ------------------------------------------------------------ cells
+
+    /** A row in a list: optional number and logo, title, subtitle, trailing text. */
+    public static class RowCell extends LinearLayout implements Hot {
+        final TextView num, title, sub, trail;
+        final ImageView logo;
+        final FrameLayout logoBox;
+        private boolean hot, active;
+
+        public RowCell(Context c, boolean withNumber, boolean withLogo) {
+            super(c);
+            setOrientation(HORIZONTAL);
+            setGravity(Gravity.CENTER_VERTICAL);
+            int p = Ui.dp(c, 14);
+            setPadding(p + Ui.dp(c, 4), p, p + Ui.dp(c, 4), p);
+            num = Ui.medium(c, "", 16, Ui.TEXT2);
+            num.setMinWidth(Ui.dp(c, 44));
+            if (withNumber) addView(num);
+            logoBox = new FrameLayout(c);
+            logoBox.setBackground(Ui.rounded(c, Ui.SURFACE, 0, 8));
+            logo = new ImageView(c);
+            logo.setScaleType(ImageView.ScaleType.FIT_CENTER);
+            int lp = Ui.dp(c, 5);
+            logo.setPadding(lp, lp, lp, lp);
+            logoBox.addView(logo, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+            if (withLogo) {
+                LayoutParams llp = new LayoutParams(Ui.dp(c, 72), Ui.dp(c, 44));
+                llp.rightMargin = Ui.dp(c, 16);
+                addView(logoBox, llp);
+            }
+            LinearLayout col = new LinearLayout(c);
+            col.setOrientation(VERTICAL);
+            title = Ui.oneLine(Ui.medium(c, "", 19, Ui.TEXT));
+            sub = Ui.oneLine(Ui.text(c, "", 14, Ui.TEXT2));
+            sub.setPadding(0, Ui.dp(c, 4), 0, 0);
+            col.addView(title);
+            col.addView(sub);
+            addView(col, new LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+            trail = Ui.medium(c, "", 16, Ui.TEXT2);
+            trail.setPadding(Ui.dp(c, 10), 0, 0, 0);
+            addView(trail);
+            setLayoutParams(new AbsListView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+            paint();
+        }
+
+        public void bind(String n, String icon, String t, String s, String tr) {
+            num.setText(n == null ? "" : n);
+            title.setText(t == null ? "" : t);
+            sub.setText(s == null ? "" : s);
+            sub.setVisibility(s == null || s.isEmpty() ? GONE : VISIBLE);
+            trail.setText(tr == null ? "" : tr);
+            trail.setVisibility(tr == null || tr.isEmpty() ? GONE : VISIBLE);
+            if (logoBox.getParent() != null) ImageLoader.load(logo, icon, 144, 88);
+        }
+
+        public void setActive(boolean a) {
+            if (a == active) return;
+            active = a;
+            paint();
+        }
+
+        public void setHot(boolean h, boolean animate) {
+            if (h == hot) return;
+            hot = h;
+            paint();
+        }
+
+        private void paint() {
+            Context c = getContext();
+            if (hot) setBackground(Ui.rounded(c, Ui.FOCUS_BG, 0, 12));
+            else if (active) setBackground(Ui.rounded(c, Ui.SURFACE_HI, 0, 12));
+            else setBackground(null);
+            title.setTextColor(hot ? Ui.ON_FOCUS : Ui.TEXT);
+            title.setTypeface(hot || active ? Ui.semibold() : Ui.medium());
+            int second = hot ? Ui.ON_FOCUS2 : Ui.TEXT2;
+            sub.setTextColor(second);
+            num.setTextColor(second);
+            trail.setTextColor(hot ? Ui.ON_FOCUS : Ui.TEXT2);
+        }
+    }
+
+    /** Poster for movies/series grids: image on top, title underneath, lifts when focused. */
+    public static class PosterCell extends LinearLayout implements Hot {
+        final ImageView img;
+        final TextView title;
+        private boolean hot;
+
+        public PosterCell(Context c, int w, int h) {
+            super(c);
+            setOrientation(VERTICAL);
+            setGravity(Gravity.CENTER_HORIZONTAL);
+            int p = Ui.dp(c, 12);
+            setPadding(p, p, p, p);
+            setClipChildren(false);
+            img = new ImageView(c);
+            img.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            img.setBackground(Ui.rounded(c, Ui.SURFACE, 0, 12));
+            img.setClipToOutline(true);
+            img.setElevation(Ui.dp(c, 2));
+            title = Ui.text(c, "", 15, Ui.TEXT2);
+            Ui.lines(title, 2);
+            title.setGravity(Gravity.CENTER_HORIZONTAL);
+            title.setPadding(0, Ui.dp(c, 10), 0, 0);
+            addView(img, new LayoutParams(w, h));
+            addView(title, new LayoutParams(w, ViewGroup.LayoutParams.WRAP_CONTENT));
+            setLayoutParams(new AbsListView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        }
+
+        public void setHot(boolean h, boolean animate) {
+            if (h == hot) return;
+            hot = h;
+            title.setTextColor(h ? Ui.TEXT : Ui.TEXT2);
+            title.setTypeface(h ? Ui.semibold() : Ui.regular());
+            float s = h ? 1.09f : 1f;
+            if (animate) {
+                Ui.animateFocus(this, h, 1.09f);
+            } else {
+                setScaleX(s);
+                setScaleY(s);
+                setTranslationZ(h ? Ui.dp(getContext(), 14) : 0);
+            }
+        }
+    }
+
+    // ------------------------------------------------------------ adapters
+
     public abstract static class ItemAdapter extends BaseAdapter {
         protected final Context ctx;
         protected List<Item> items = new ArrayList<>();
+        protected AbsListView list;
 
         ItemAdapter(Context c) { ctx = c; }
 
-        public void set(List<Item> list) {
-            items = list == null ? new ArrayList<Item>() : list;
+        public void attach(AbsListView l) {
+            list = l;
+            l.setAdapter(this);
+        }
+
+        public void set(List<Item> l) {
+            items = l == null ? new ArrayList<Item>() : l;
             notifyDataSetChanged();
+        }
+
+        protected boolean isHot(int pos) {
+            return list != null && list.hasFocus() && list.getSelectedItemPosition() == pos;
         }
 
         public List<Item> items() { return items; }
@@ -35,7 +210,7 @@ public final class Adapters {
         @Override public long getItemId(int p) { return p; }
     }
 
-    /** Text rows (categories, seasons, episodes). The "active" row is drawn in the accent colour. */
+    /** Plain text rows (categories, settings-like lists). */
     public static class TextRows extends ItemAdapter {
         public int active = -1;
 
@@ -43,80 +218,36 @@ public final class Adapters {
 
         @Override
         public View getView(int pos, View v, ViewGroup parent) {
-            LinearLayout row;
-            TextView a, b;
-            if (v == null) {
-                row = new LinearLayout(ctx);
-                row.setOrientation(LinearLayout.VERTICAL);
-                int p = Ui.dp(ctx, 12);
-                row.setPadding(p, p, p, p);
-                a = Ui.oneLine(Ui.text(ctx, "", 18, Ui.TEXT));
-                b = Ui.oneLine(Ui.text(ctx, "", 13, Ui.MUTED));
-                row.addView(a);
-                row.addView(b);
-                row.setLayoutParams(new AbsListView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-            } else {
-                row = (LinearLayout) v;
-                a = (TextView) row.getChildAt(0);
-                b = (TextView) row.getChildAt(1);
-            }
+            RowCell cell = v instanceof RowCell ? (RowCell) v : new RowCell(ctx, false, false);
             Item it = getItem(pos);
-            a.setText(it.name);
-            a.setTextColor(pos == active ? Ui.ACCENT : Ui.TEXT);
-            a.setTypeface(pos == active ? Typeface.DEFAULT_BOLD : Typeface.DEFAULT);
-            b.setText(it.info == null ? "" : it.info);
-            b.setVisibility(it.info == null ? View.GONE : View.VISIBLE);
-            return row;
+            cell.bind(null, null, it.name, it.info, it.num);
+            cell.setActive(pos == active);
+            cell.setHot(isHot(pos), false);
+            return cell;
         }
     }
 
-    /** Live channel rows: number · logo · name · ★ */
+    /** Live channels: number · logo · name · ★ */
     public static class Channels extends ItemAdapter {
         private final Prefs prefs;
+        public String playingId;
 
         public Channels(Context c, Prefs p) { super(c); prefs = p; }
 
         @Override
         public View getView(int pos, View v, ViewGroup parent) {
-            LinearLayout row;
-            TextView num, name, star;
-            ImageView logo;
-            if (v == null) {
-                row = new LinearLayout(ctx);
-                row.setOrientation(LinearLayout.HORIZONTAL);
-                row.setGravity(Gravity.CENTER_VERTICAL);
-                int p = Ui.dp(ctx, 10);
-                row.setPadding(p, p, p, p);
-                num = Ui.text(ctx, "", 15, Ui.MUTED);
-                num.setMinWidth(Ui.dp(ctx, 46));
-                logo = new ImageView(ctx);
-                logo.setScaleType(ImageView.ScaleType.FIT_CENTER);
-                LinearLayout.LayoutParams llp = new LinearLayout.LayoutParams(Ui.dp(ctx, 64), Ui.dp(ctx, 40));
-                llp.rightMargin = Ui.dp(ctx, 12);
-                name = Ui.oneLine(Ui.text(ctx, "", 18, Ui.TEXT));
-                star = Ui.text(ctx, "★", 18, Ui.ACCENT);
-                row.addView(num);
-                row.addView(logo, llp);
-                row.addView(name, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
-                row.addView(star);
-                row.setLayoutParams(new AbsListView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-            } else {
-                row = (LinearLayout) v;
-                num = (TextView) row.getChildAt(0);
-                logo = (ImageView) row.getChildAt(1);
-                name = (TextView) row.getChildAt(2);
-                star = (TextView) row.getChildAt(3);
-            }
+            RowCell cell = v instanceof RowCell ? (RowCell) v : new RowCell(ctx, true, true);
             Item it = getItem(pos);
-            num.setText(it.num == null ? String.valueOf(pos + 1) : it.num);
-            name.setText(it.name);
-            star.setVisibility(prefs.isFav(it) ? View.VISIBLE : View.GONE);
-            ImageLoader.load(logo, it.icon, 128, 80);
-            return row;
+            String trail = prefs.isFav(it) ? "★" : null;
+            if (playingId != null && playingId.equals(it.id)) trail = "▶";
+            cell.bind(it.num == null ? String.valueOf(pos + 1) : it.num, it.icon, it.name, null, trail);
+            cell.setActive(playingId != null && playingId.equals(it.id));
+            cell.setHot(isHot(pos), false);
+            return cell;
         }
     }
 
-    /** Poster grid cells for movies and series. */
+    /** Poster grid for movies and series. */
     public static class Posters extends ItemAdapter {
         private final Prefs prefs;
         private final int w, h;
@@ -124,41 +255,17 @@ public final class Adapters {
         public Posters(Context c, Prefs p) {
             super(c);
             prefs = p;
-            w = Ui.dp(c, 134);
-            h = Ui.dp(c, 200);
+            w = Ui.dp(c, 150);
+            h = Ui.dp(c, 225);
         }
 
         @Override
         public View getView(int pos, View v, ViewGroup parent) {
-            LinearLayout cell;
-            ImageView img;
-            TextView name;
-            if (v == null) {
-                cell = new LinearLayout(ctx);
-                cell.setOrientation(LinearLayout.VERTICAL);
-                cell.setGravity(Gravity.CENTER_HORIZONTAL);
-                int p = Ui.dp(ctx, 8);
-                cell.setPadding(p, p, p, p);
-                img = new ImageView(ctx);
-                img.setScaleType(ImageView.ScaleType.CENTER_CROP);
-                img.setBackground(Ui.rounded(ctx, Ui.CARD, 0, 8));
-                img.setClipToOutline(true);
-                name = Ui.text(ctx, "", 14, Ui.TEXT);
-                name.setMaxLines(2);
-                name.setEllipsize(android.text.TextUtils.TruncateAt.END);
-                name.setGravity(Gravity.CENTER_HORIZONTAL);
-                name.setPadding(0, Ui.dp(ctx, 6), 0, 0);
-                cell.addView(img, new LinearLayout.LayoutParams(w, h));
-                cell.addView(name, new LinearLayout.LayoutParams(w, ViewGroup.LayoutParams.WRAP_CONTENT));
-                cell.setLayoutParams(new AbsListView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-            } else {
-                cell = (LinearLayout) v;
-                img = (ImageView) cell.getChildAt(0);
-                name = (TextView) cell.getChildAt(1);
-            }
+            PosterCell cell = v instanceof PosterCell ? (PosterCell) v : new PosterCell(ctx, w, h);
             Item it = getItem(pos);
-            name.setText(prefs.isFav(it) ? "★ " + it.name : it.name);
-            ImageLoader.load(img, it.icon, 270, 400);
+            cell.title.setText(prefs.isFav(it) ? "★ " + it.name : it.name);
+            ImageLoader.load(cell.img, it.icon, 300, 450);
+            cell.setHot(isHot(pos), false);
             return cell;
         }
     }

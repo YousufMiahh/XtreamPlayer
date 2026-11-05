@@ -18,8 +18,21 @@ public class Item {
     public String num;
     public String plot;
     public String info;
+    public String categoryId;
+    /** Unix seconds the provider added it (used for "Recently added"). */
+    public long added;
+    /** For episodes: the series they belong to. */
+    public String parentId, parentName, parentIcon;
     /** Episode running time, kept separately so the resume note can be rebuilt. */
     public String duration;
+
+    private String lower;
+
+    /** Lower-cased name, computed once (makes searching big libraries fast). */
+    public String lower() {
+        if (lower == null) lower = name.toLowerCase(java.util.Locale.UK);
+        return lower;
+    }
 
     public Item() {}
 
@@ -44,6 +57,12 @@ public class Item {
             o.put("num", num);
             o.put("plot", plot);
             o.put("info", info);
+            o.put("cat", categoryId);
+            o.put("added", added);
+            o.put("pid", parentId);
+            o.put("pname", parentName);
+            o.put("picon", parentIcon);
+            o.put("dur", duration);
         } catch (Exception ignored) {
         }
         return o;
@@ -56,6 +75,12 @@ public class Item {
         it.num = opt(o, "num");
         it.plot = opt(o, "plot");
         it.info = opt(o, "info");
+        it.categoryId = opt(o, "cat");
+        it.added = o.optLong("added", 0);
+        it.parentId = opt(o, "pid");
+        it.parentName = opt(o, "pname");
+        it.parentIcon = opt(o, "picon");
+        it.duration = opt(o, "dur");
         return it;
     }
 
