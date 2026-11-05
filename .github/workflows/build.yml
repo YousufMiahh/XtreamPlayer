@@ -23,11 +23,23 @@ jobs:
         with:
           gradle-version: '8.9'
 
+      - name: Find project folder
+        run: |
+          f=$(find . -name settings.gradle -not -path './.git/*' | head -1)
+          if [ -z "$f" ]; then
+            echo "::error::settings.gradle is missing from the repo - please upload it"
+            echo "Files found in repo:"; find . -not -path './.git*' | head -60
+            exit 1
+          fi
+          echo "PROJECT_DIR=$(dirname "$f")" >> "$GITHUB_ENV"
+          echo "Project found in: $(dirname "$f")"
+
       - name: Build release APK
+        working-directory: ${{ env.PROJECT_DIR }}
         run: gradle assembleRelease --no-daemon --stacktrace
 
       - name: Rename APK
-        run: cp app/build/outputs/apk/release/app-release.apk XtreamPlayer.apk
+        run: cp "$PROJECT_DIR/app/build/outputs/apk/release/app-release.apk" XtreamPlayer.apk
 
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
