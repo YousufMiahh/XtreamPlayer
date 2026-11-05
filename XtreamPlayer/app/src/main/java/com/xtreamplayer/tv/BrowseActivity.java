@@ -156,7 +156,7 @@ public class BrowseActivity extends Activity {
     }
 
     private LinearLayout.LayoutParams panelParams() {
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(Ui.dp(this, 440), ViewGroup.LayoutParams.MATCH_PARENT);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(Ui.dp(this, 400), ViewGroup.LayoutParams.MATCH_PARENT);
         lp.leftMargin = Ui.dp(this, 36);
         return lp;
     }
@@ -177,11 +177,12 @@ public class BrowseActivity extends Activity {
         previewView.setVisibility(View.INVISIBLE);
         logoBox.addView(previewView, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         infoLogo = new ImageView(this);
+        infoLogo.setBackgroundColor(Ui.DARK ? 0xFF24252C : 0xFFE6E6EB);
         infoLogo.setScaleType(ImageView.ScaleType.FIT_CENTER);
         int lp = Ui.dp(this, 26);
         infoLogo.setPadding(lp, lp, lp, lp);
         logoBox.addView(infoLogo, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-        p.addView(logoBox, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(this, 216)));
+        p.addView(logoBox, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(this, 194)));
 
         infoName = Ui.lines(Ui.title(this, "", 26), 2);
         infoName.setPadding(0, Ui.dp(this, 22), 0, Ui.dp(this, 20));
@@ -484,7 +485,6 @@ public class BrowseActivity extends Activity {
             preview.addListener(new Player.Listener() {
                 @Override
                 public void onRenderedFirstFrame() {
-                    previewView.setVisibility(View.VISIBLE);
                     infoLogo.animate().alpha(0f).setDuration(250).start();
                 }
 
@@ -494,6 +494,7 @@ public class BrowseActivity extends Activity {
             previewView.setPlayer(preview);
         }
         previewItem = it;
+        previewView.setVisibility(View.VISIBLE); // the video surface only exists while visible
         preview.setVolume(prefs.previewMode() == 2 ? 1f : 0f);
         preview.setMediaItem(PlayerFactory.media(api.playUrl(it, prefs.liveFormat())));
         preview.prepare();

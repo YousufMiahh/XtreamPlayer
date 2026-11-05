@@ -58,7 +58,7 @@ public class SearchActivity extends Activity {
 
         box = Ui.input(this, "Channels, movies and series", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
         box.setImeOptions(EditorInfo.IME_ACTION_SEARCH);
-        box.setTextSize(24);
+        box.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, Ui.sp(this, 24));
         box.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(Ui.dp(this, 820), ViewGroup.LayoutParams.WRAP_CONTENT);
         blp.gravity = Gravity.CENTER_HORIZONTAL;

@@ -78,8 +78,30 @@ public final class Ui {
     public static Typeface semibold() { return semibold == null ? Typeface.DEFAULT_BOLD : semibold; }
     public static Typeface bold() { return bold == null ? Typeface.DEFAULT_BOLD : bold; }
 
+    private static float unit = -1;
+
+    /**
+     * Layout unit in pixels. Sizes in this app are designed for a 1920×1080 screen at 1.4 px per unit
+     * and scale to whatever the TV really reports (Fire TV lays out at 960×540 "dp", which made
+     * everything twice the intended size before).
+     */
+    public static float unit(Context c) {
+        if (unit < 0) {
+            android.util.DisplayMetrics m = c.getResources().getDisplayMetrics();
+            float w = Math.max(m.widthPixels, m.heightPixels), h = Math.min(m.widthPixels, m.heightPixels);
+            unit = Math.min(w / 1920f, h / 1080f) * 1.4f;
+        }
+        return unit;
+    }
+
     public static int dp(Context c, float v) {
-        return (int) TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, v, c.getResources().getDisplayMetrics());
+        int px = Math.round(v * unit(c));
+        return px == 0 && v > 0 ? 1 : px;
+    }
+
+    /** Text size in pixels for a design size. */
+    public static float sp(Context c, float v) {
+        return v * unit(c);
     }
 
     public static GradientDrawable rounded(Context c, int fill, int stroke, float radiusDp) {
@@ -131,7 +153,7 @@ public final class Ui {
         init(c);
         TextView t = new TextView(c);
         t.setText(s);
-        t.setTextSize(TypedValue.COMPLEX_UNIT_SP, sp);
+        t.setTextSize(TypedValue.COMPLEX_UNIT_PX, sp(c, sp));
         t.setTextColor(color);
         t.setTypeface(regular());
         t.setIncludeFontPadding(false);
@@ -171,7 +193,7 @@ public final class Ui {
         b.setText(s);
         b.setAllCaps(false);
         b.setTextColor(focusText(TEXT));
-        b.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18);
+        b.setTextSize(TypedValue.COMPLEX_UNIT_PX, sp(c, 18));
         b.setTypeface(semibold());
         b.setBackground(pill(c, SURFACE_HI, 12));
         b.setStateListAnimator(null);
@@ -193,7 +215,7 @@ public final class Ui {
         e.setSingleLine(true);
         e.setTextColor(focusText(TEXT));
         e.setHintTextColor(TEXT3);
-        e.setTextSize(TypedValue.COMPLEX_UNIT_SP, 19);
+        e.setTextSize(TypedValue.COMPLEX_UNIT_PX, sp(c, 19));
         e.setTypeface(medium());
         e.setBackground(pill(c, SURFACE, 12));
         int p = dp(c, 16);
