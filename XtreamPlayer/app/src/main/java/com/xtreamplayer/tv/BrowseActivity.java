@@ -273,7 +273,7 @@ public class BrowseActivity extends Activity {
                 int start = !prefs.favs(type).isEmpty() ? 0
                         : !specialList(all.get(1).id).isEmpty() ? 1
                         : (all.size() > firstReal ? firstReal : firstReal - 1);
-                catList.requestFocus();
+                if (!TopBar.tabFocused(BrowseActivity.this)) catList.requestFocus();
                 catList.setSelection(start);
                 openCategory(all.get(start), start, false);
             }

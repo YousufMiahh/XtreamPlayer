@@ -37,7 +37,7 @@
         <activity android:name=".BrowseActivity" android:windowSoftInputMode="stateHidden|adjustNothing" />
         <activity android:name=".SeriesActivity" />
         <activity android:name=".MovieActivity" />
-        <activity android:name=".SearchActivity" android:windowSoftInputMode="stateVisible|adjustNothing" />
+        <activity android:name=".SearchActivity" android:windowSoftInputMode="stateHidden|adjustNothing" />
         <activity android:name=".SettingsActivity" />
         <activity android:name=".TrailerActivity" android:configChanges="orientation|screenSize|keyboardHidden" />
         <activity

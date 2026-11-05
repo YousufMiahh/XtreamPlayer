@@ -41,6 +41,12 @@ public class SettingsActivity extends Activity {
         col.addView(TopBar.build(this, TopBar.SETTINGS));
         list = new LinearLayout(this);
         list.setOrientation(LinearLayout.VERTICAL);
+        list.setClipChildren(false);
+        list.setClipToPadding(false);
+        col.setClipChildren(false);
+        scroll.setClipChildren(false);
+        int side = Ui.dp(this, 16);
+        list.setPadding(side, 0, side, 0);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(Ui.dp(this, 900), ViewGroup.LayoutParams.WRAP_CONTENT);
         lp.gravity = Gravity.CENTER_HORIZONTAL;
         lp.bottomMargin = Ui.dp(this, 60);
@@ -292,7 +298,7 @@ public class SettingsActivity extends Activity {
         int p = Ui.dp(this, 22);
         r.setPadding(p, Ui.dp(this, 18), p, Ui.dp(this, 18));
         final TextView l = Ui.medium(this, label, 19, Ui.TEXT);
-        final TextView v = Ui.oneLine(Ui.text(this, value, 18, Ui.TEXT2));
+        final TextView v = Ui.lines(Ui.text(this, value, 18, Ui.TEXT2), 2);
         v.setGravity(Gravity.END);
         r.addView(l, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         LinearLayout.LayoutParams vlp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
