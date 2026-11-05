@@ -47,7 +47,7 @@ public class SearchActivity extends Activity {
         api = new XtreamApi(prefs);
 
         ScrollView scroll = new ScrollView(this);
-        scroll.setBackground(Ui.screenBackground());
+        Ambient.install(this, Ambient.SEARCH);
         scroll.setVerticalScrollBarEnabled(false);
         scroll.setClipChildren(false);
         LinearLayout col = new LinearLayout(this);

@@ -49,6 +49,10 @@ import java.util.Locale;
 public class PlayerActivity extends Activity {
     static final long BACK_MS = 5000, FORWARD_MS = 10000;
     static final float[] SUB_SIZES = {0.045f, 0.056f, 0.068f, 0.085f};
+    static final String[] SUB_COLOR_NAMES = {"White", "Yellow", "Cyan", "Green", "Pink", "Orange"};
+    static final int[] SUB_COLORS = {0xFFFFFFFF, 0xFFFFE14D, 0xFF5AE0FF, 0xFF6BEA7A, 0xFFFF8AD8, 0xFFFFA94D};
+    static final String[] SUB_OPACITY_NAMES = {"25%", "50%", "75%", "100%"};
+    static final int[] SUB_OPACITY_ALPHA = {0x40, 0x80, 0xBF, 0xFF};
 
     private Prefs prefs;
     private XtreamApi api;
@@ -178,9 +182,9 @@ public class PlayerActivity extends Activity {
         vodOverlay.addView(vodSub);
         vodOverlay.addView(vodTitle);
 
-        seekBubble = Ui.medium(this, "", 18, 0xFF0B0B0F);
+        seekBubble = Ui.medium(this, "", 18, Ui.W1);
         seekBubble.setTypeface(Ui.semibold());
-        seekBubble.setBackground(Ui.rounded(this, Color.WHITE, 0, 16));
+        seekBubble.setBackground(Ui.rounded(this, 0x33FFFFFF, 0, 16));
         seekBubble.setPadding(Ui.dp(this, 16), Ui.dp(this, 6), Ui.dp(this, 16), Ui.dp(this, 6));
         seekBubble.setVisibility(View.INVISIBLE);
         LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
@@ -402,8 +406,10 @@ public class PlayerActivity extends Activity {
         if (sv == null) return;
         sv.setApplyEmbeddedStyles(false);
         sv.setApplyEmbeddedFontSizes(false);
-        sv.setStyle(new CaptionStyleCompat(Color.WHITE, Color.TRANSPARENT, Color.TRANSPARENT,
-                CaptionStyleCompat.EDGE_TYPE_DROP_SHADOW, 0xE6000000, Ui.semibold()));
+        boolean bg = prefs.subtitleBackground();
+        int bgColor = bg ? (SUB_OPACITY_ALPHA[prefs.subtitleOpacity()] << 24) : Color.TRANSPARENT;
+        sv.setStyle(new CaptionStyleCompat(SUB_COLORS[prefs.subtitleColor()], bgColor, Color.TRANSPARENT,
+                bg ? CaptionStyleCompat.EDGE_TYPE_NONE : CaptionStyleCompat.EDGE_TYPE_DROP_SHADOW, 0xE6000000, Ui.semibold()));
         sv.setFractionalTextSize(SUB_SIZES[Math.max(0, Math.min(SUB_SIZES.length - 1, prefs.subtitleSize()))]);
         sv.setBottomPaddingFraction(0.07f);
     }

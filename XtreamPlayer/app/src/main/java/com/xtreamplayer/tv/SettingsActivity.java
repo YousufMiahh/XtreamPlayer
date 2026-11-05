@@ -34,7 +34,7 @@ public class SettingsActivity extends Activity {
         prefs = new Prefs(this);
 
         ScrollView scroll = new ScrollView(this);
-        scroll.setBackground(Ui.screenBackground());
+        Ambient.install(this, Ambient.SETTINGS);
         scroll.setVerticalScrollBarEnabled(false);
         LinearLayout col = new LinearLayout(this);
         col.setOrientation(LinearLayout.VERTICAL);
@@ -92,17 +92,45 @@ public class SettingsActivity extends Activity {
             }
         });
 
+        section("Subtitles");
+        row("Size", SUB_SIZES[prefs.subtitleSize()], new Action() {
+            public void run(TextView v) {
+                prefs.setSubtitleSize((prefs.subtitleSize() + 1) % SUB_SIZES.length);
+                v.setText(SUB_SIZES[prefs.subtitleSize()]);
+                updateSample();
+            }
+        });
+        row("Colour", PlayerActivity.SUB_COLOR_NAMES[prefs.subtitleColor()], new Action() {
+            public void run(TextView v) {
+                prefs.setSubtitleColor((prefs.subtitleColor() + 1) % PlayerActivity.SUB_COLORS.length);
+                v.setText(PlayerActivity.SUB_COLOR_NAMES[prefs.subtitleColor()]);
+                updateSample();
+            }
+        });
+        row("Background", prefs.subtitleBackground() ? "On" : "Off", new Action() {
+            public void run(TextView v) {
+                prefs.setSubtitleBackground(!prefs.subtitleBackground());
+                v.setText(prefs.subtitleBackground() ? "On" : "Off");
+                updateSample();
+            }
+        });
+        row("Background Opacity", PlayerActivity.SUB_OPACITY_NAMES[prefs.subtitleOpacity()], new Action() {
+            public void run(TextView v) {
+                prefs.setSubtitleOpacity((prefs.subtitleOpacity() + 1) % PlayerActivity.SUB_OPACITY_ALPHA.length);
+                v.setText(PlayerActivity.SUB_OPACITY_NAMES[prefs.subtitleOpacity()]);
+                if (!prefs.subtitleBackground()) {
+                    Toast.makeText(SettingsActivity.this, "Turn Background on to see this", Toast.LENGTH_SHORT).show();
+                }
+                updateSample();
+            }
+        });
+        addSample();
+
         section("Playback");
         row("Live Stream Format", liveLabel(), new Action() {
             public void run(TextView v) {
                 prefs.setLiveFormat("ts".equals(prefs.liveFormat()) ? "m3u8" : "ts");
                 v.setText(liveLabel());
-            }
-        });
-        row("Subtitle Size", SUB_SIZES[prefs.subtitleSize()], new Action() {
-            public void run(TextView v) {
-                prefs.setSubtitleSize((prefs.subtitleSize() + 1) % SUB_SIZES.length);
-                v.setText(SUB_SIZES[prefs.subtitleSize()]);
             }
         });
         row("Fix Frozen Video Automatically", prefs.autoRecover() ? "On" : "Off", new Action() {
@@ -206,6 +234,44 @@ public class SettingsActivity extends Activity {
                 })
                 .setNegativeButton("Cancel", null)
                 .show();
+    }
+
+    private TextView sample;
+
+    /** A mock video frame showing how subtitles will look. */
+    private void addSample() {
+        android.widget.FrameLayout frame = new android.widget.FrameLayout(this);
+        frame.setBackground(new android.graphics.drawable.GradientDrawable(
+                android.graphics.drawable.GradientDrawable.Orientation.TL_BR, new int[]{0xFF3B5B8C, 0xFF6C4A7E, 0xFFB0705A}));
+        frame.setClipToOutline(true);
+        frame.setOutlineProvider(android.view.ViewOutlineProvider.BACKGROUND);
+        ((android.graphics.drawable.GradientDrawable) frame.getBackground()).setCornerRadius(Ui.dp(this, 12));
+        sample = Ui.text(this, "This is how your subtitles will look.", 22, 0xFFFFFFFF);
+        sample.setTypeface(Ui.semibold());
+        sample.setPadding(Ui.dp(this, 10), Ui.dp(this, 4), Ui.dp(this, 10), Ui.dp(this, 4));
+        android.widget.FrameLayout.LayoutParams sp = new android.widget.FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
+        sp.bottomMargin = Ui.dp(this, 22);
+        frame.addView(sample, sp);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(this, 170));
+        lp.topMargin = Ui.dp(this, 6);
+        lp.bottomMargin = Ui.dp(this, 6);
+        list.addView(frame, lp);
+        updateSample();
+    }
+
+    private void updateSample() {
+        if (sample == null) return;
+        float[] sizes = {19, 23, 28, 34};
+        sample.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, Ui.sp(this, sizes[prefs.subtitleSize()]));
+        sample.setTextColor(PlayerActivity.SUB_COLORS[prefs.subtitleColor()]);
+        if (prefs.subtitleBackground()) {
+            sample.setBackgroundColor(PlayerActivity.SUB_OPACITY_ALPHA[prefs.subtitleOpacity()] << 24);
+            sample.setShadowLayer(0, 0, 0, 0);
+        } else {
+            sample.setBackgroundColor(0);
+            sample.setShadowLayer(Ui.dp(this, 4), 0, Ui.dp(this, 1), 0xE6000000);
+        }
     }
 
     private String liveLabel() {

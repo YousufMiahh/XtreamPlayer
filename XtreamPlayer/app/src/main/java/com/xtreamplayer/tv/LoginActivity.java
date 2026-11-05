@@ -50,7 +50,7 @@ public class LoginActivity extends Activity {
 
         FrameLayout root = new FrameLayout(this);
         Ui.init(this);
-        root.setBackground(Ui.screenBackground());
+        Ambient.install(this, Ambient.HOME);
         LinearLayout col = new LinearLayout(this);
         col.setOrientation(LinearLayout.VERTICAL);
         int pad = Ui.dp(this, 44);

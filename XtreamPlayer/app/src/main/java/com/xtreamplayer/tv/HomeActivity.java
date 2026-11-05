@@ -30,7 +30,7 @@ public class HomeActivity extends Activity {
         ImageLoader.setUserAgent(prefs.userAgent());
 
         FrameLayout root = new FrameLayout(this);
-        root.setBackground(Ui.screenBackground());
+        Ambient.install(this, Ambient.HOME);
         ScrollView scroll = new ScrollView(this);
         scroll.setVerticalScrollBarEnabled(false);
         scroll.setClipChildren(false);

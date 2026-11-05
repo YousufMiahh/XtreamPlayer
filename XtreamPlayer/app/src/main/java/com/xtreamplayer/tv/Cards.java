@@ -67,6 +67,8 @@ public final class Cards {
             art.addView(progressBar(c, progress), bp);
         }
         card.addView(art, new LinearLayout.LayoutParams(w, h));
+        final FrameLayout artF = art;
+        final String imageF = image;
         ImageLoader.load(img, image, shape == Shape.POSTER ? 320 : 480, shape == Shape.POSTER ? 480 : 270);
 
         final TextView t = Ui.oneLine(Ui.medium(c, title, 16, Ui.TEXT2));
@@ -79,6 +81,8 @@ public final class Cards {
         card.setOnFocusChangeListener(new View.OnFocusChangeListener() {
             public void onFocusChange(View v, boolean has) {
                 Ui.animateFocus(v, has, 1.08f);
+                artF.setForeground(has ? Ui.outline(v.getContext(), 14) : null);
+                if (has) Ambient.tint(v.getContext(), imageF);
                 t.setTextColor(has ? Ui.TEXT : Ui.TEXT2);
                 s.setTextColor(has ? Ui.TEXT2 : Ui.TEXT3);
             }

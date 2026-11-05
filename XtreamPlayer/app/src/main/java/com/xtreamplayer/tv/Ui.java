@@ -39,7 +39,7 @@ public final class Ui {
     public static void applyTheme(boolean dark) {
         DARK = dark;
         if (dark) {
-            BG = 0xFF0B0B0F; BG_TOP = 0xFF1A1B22;
+            BG = 0xFF0A0B12; BG_TOP = 0xFF1C2040;
             SURFACE = 0x1AFFFFFF; SURFACE_HI = 0x2EFFFFFF; SURFACE_LO = 0x12FFFFFF;
             SHEET = 0xF21C1C22;
             TEXT = 0xFFFFFFFF; TEXT2 = 0x99EBEBF5; TEXT3 = 0x4DEBEBF5;
@@ -109,6 +109,15 @@ public final class Ui {
         g.setColor(fill);
         g.setCornerRadius(dp(c, radiusDp));
         if (stroke != 0) g.setStroke(dp(c, 2), stroke);
+        return g;
+    }
+
+    /** Focus ring drawn over artwork. */
+    public static Drawable outline(Context c, float radiusDp) {
+        GradientDrawable g = new GradientDrawable();
+        g.setColor(Color.TRANSPARENT);
+        g.setCornerRadius(dp(c, radiusDp));
+        g.setStroke(dp(c, 4), DARK ? Color.WHITE : FOCUS_BG);
         return g;
     }
 

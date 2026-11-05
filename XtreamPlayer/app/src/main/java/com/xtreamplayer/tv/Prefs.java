@@ -181,6 +181,16 @@ public class Prefs {
     public int subtitleSize() { return sp.getInt("sub_size", 1); }
     public void setSubtitleSize(int s) { sp.edit().putInt("sub_size", s).apply(); }
 
+    public int subtitleColor() { return Math.min(sp.getInt("sub_color", 0), 5); }
+    public void setSubtitleColor(int i) { sp.edit().putInt("sub_color", i).apply(); }
+
+    public boolean subtitleBackground() { return sp.getBoolean("sub_bg", false); }
+    public void setSubtitleBackground(boolean b) { sp.edit().putBoolean("sub_bg", b).apply(); }
+
+    /** 0 = 25%, 1 = 50%, 2 = 75%, 3 = 100%. */
+    public int subtitleOpacity() { return Math.min(sp.getInt("sub_bg_opacity", 2), 3); }
+    public void setSubtitleOpacity(int i) { sp.edit().putInt("sub_bg_opacity", i).apply(); }
+
     /** Preferred subtitle language; "" = provider default, "off" = no subtitles. */
     public String subtitleLanguage() { return sp.getString("sub_lang", ""); }
     public void setSubtitleLanguage(String l) { sp.edit().putString("sub_lang", l == null ? "" : l).apply(); }

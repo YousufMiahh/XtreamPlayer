@@ -141,6 +141,7 @@ public final class Adapters {
     /** Poster for movies/series grids: image on top, title underneath, lifts when focused. */
     public static class PosterCell extends LinearLayout implements Hot {
         final ImageView img;
+        final FrameLayout frame;
         final TextView title;
         private boolean hot;
 
@@ -155,12 +156,14 @@ public final class Adapters {
             img.setScaleType(ImageView.ScaleType.CENTER_CROP);
             img.setBackground(Ui.rounded(c, Ui.SURFACE, 0, 12));
             img.setClipToOutline(true);
-            img.setElevation(Ui.dp(c, 2));
+            frame = new FrameLayout(c);
+            frame.setElevation(Ui.dp(c, 2));
+            frame.addView(img, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
             title = Ui.text(c, "", 15, Ui.TEXT2);
             Ui.lines(title, 2);
             title.setGravity(Gravity.CENTER_HORIZONTAL);
             title.setPadding(0, Ui.dp(c, 10), 0, 0);
-            addView(img, new LayoutParams(w, h));
+            addView(frame, new LayoutParams(w, h));
             addView(title, new LayoutParams(w, ViewGroup.LayoutParams.WRAP_CONTENT));
             setLayoutParams(new AbsListView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         }
@@ -168,6 +171,7 @@ public final class Adapters {
         public void setHot(boolean h, boolean animate) {
             if (h == hot) return;
             hot = h;
+            frame.setForeground(h ? Ui.outline(getContext(), 12) : null);
             title.setTextColor(h ? Ui.TEXT : Ui.TEXT2);
             title.setTypeface(h ? Ui.semibold() : Ui.regular());
             float s = h ? 1.09f : 1f;

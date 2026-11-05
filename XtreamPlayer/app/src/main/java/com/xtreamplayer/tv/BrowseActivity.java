@@ -75,7 +75,7 @@ public class BrowseActivity extends Activity {
 
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackground(Ui.screenBackground());
+        Ambient.install(this, live ? Ambient.LIVE : Item.MOVIE.equals(type) ? Ambient.MOVIES : Ambient.SERIES);
         root.addView(TopBar.build(this, live ? TopBar.LIVE : Item.MOVIE.equals(type) ? TopBar.MOVIES : TopBar.SERIES));
 
         LinearLayout cols = new LinearLayout(this);
@@ -244,6 +244,7 @@ public class BrowseActivity extends Activity {
         content.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             public void onItemSelected(AdapterView<?> p, View v, int pos, long id) {
                 Adapters.refresh(content);
+                if (pos >= 0 && pos < contentAdapter.getCount()) Ambient.tint(BrowseActivity.this, contentAdapter.getItem(pos).icon);
                 if (live) showChannelInfo(pos);
             }
             public void onNothingSelected(AdapterView<?> p) { Adapters.refresh(content); }
