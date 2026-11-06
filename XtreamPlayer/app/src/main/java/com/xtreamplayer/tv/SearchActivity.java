@@ -88,11 +88,16 @@ public class SearchActivity extends Activity implements TopBar.Reselect {
                 Async.MAIN.postDelayed(pending, 300);
             }
         });
+        // The keyboard's action button says "Search" and, whatever it's labelled, searches and closes the keyboard.
+        box.setImeOptions(EditorInfo.IME_ACTION_SEARCH | EditorInfo.IME_FLAG_NO_EXTRACT_UI);
+        box.setImeActionLabel("Search", EditorInfo.IME_ACTION_SEARCH);
         box.setOnEditorActionListener(new TextView.OnEditorActionListener() {
             public boolean onEditorAction(TextView v, int action, KeyEvent e) {
+                if (e != null && e.getAction() != KeyEvent.ACTION_DOWN) return true;
                 Async.MAIN.removeCallbacks(pending);
                 search();
-                return false;
+                closeKeyboard();
+                return true;
             }
         });
         box.requestFocus();
@@ -231,7 +236,39 @@ public class SearchActivity extends Activity implements TopBar.Reselect {
 
     @Override
     public void onBackPressed() {
+        if (box.hasFocus()) { // Back while typing: close the keyboard and stay on Search
+            closeKeyboard();
+            return;
+        }
         TopBar.back(this);
+    }
+
+    private void closeKeyboard() {
+        android.view.inputmethod.InputMethodManager imm =
+                (android.view.inputmethod.InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
+        if (imm != null) imm.hideSoftInputFromWindow(box.getWindowToken(), 0);
+        // Move to the first result if there is one, otherwise the Search tab
+        View first = null;
+        for (LinearLayout s : slots) {
+            if (s.getChildCount() > 0) {
+                View f = findFirstFocusable(s);
+                if (f != null) { first = f; break; }
+            }
+        }
+        if (first != null) first.requestFocus();
+        else TopBar.focusTab(this, TopBar.SEARCH);
+    }
+
+    private View findFirstFocusable(View v) {
+        if (v.isFocusable() && v.getVisibility() == View.VISIBLE && !(v instanceof android.widget.EditText)) return v;
+        if (v instanceof android.view.ViewGroup) {
+            android.view.ViewGroup g = (android.view.ViewGroup) v;
+            for (int i = 0; i < g.getChildCount(); i++) {
+                View f = findFirstFocusable(g.getChildAt(i));
+                if (f != null) return f;
+            }
+        }
+        return null;
     }
 
     /** OK on the Search tab: jump into the search box with the keyboard open. */
@@ -239,7 +276,7 @@ public class SearchActivity extends Activity implements TopBar.Reselect {
         box.requestFocus();
         android.view.inputmethod.InputMethodManager imm =
                 (android.view.inputmethod.InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
-        if (imm != null) imm.showSoftInput(box, android.view.inputmethod.InputMethodManager.SHOW_FORCED);
+        if (imm != null) imm.showSoftInput(box, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT); // not "forced": Back can close it
     }
 
     @Override
