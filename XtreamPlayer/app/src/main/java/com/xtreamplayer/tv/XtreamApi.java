@@ -93,7 +93,7 @@ public class XtreamApi {
         String action = Item.LIVE.equals(type) ? "get_live_categories"
                 : Item.MOVIE.equals(type) ? "get_vod_categories" : "get_series_categories";
         final List<Item> out = new ArrayList<>();
-        readArray(api(action, null), new ObjectHandler() {
+        readArray(api(action, null), CAT_FIELDS, new ObjectHandler() {
             public void handle(Map<String, String> m) {
                 String id = m.get("category_id");
                 if (id == null) return;
@@ -109,8 +109,11 @@ public class XtreamApi {
                 : Item.MOVIE.equals(type) ? "get_vod_streams" : "get_series";
         String extra = categoryId == null ? null : "&category_id=" + Uri.encode(categoryId);
         final List<Item> out = new ArrayList<>();
-        readArray(api(action, extra), new ObjectHandler() {
+        final int[] counter = new int[1];
+        if (categoryId == null) PROGRESS.put(type, counter);
+        readArray(api(action, extra), STREAM_FIELDS, new ObjectHandler() {
             public void handle(Map<String, String> m) {
+                counter[0]++;
                 Item it;
                 if (Item.SERIES.equals(type)) {
                     it = new Item(type, m.get("series_id"), clean(m.get("name")));
@@ -220,8 +223,24 @@ public class XtreamApi {
         void handle(Map<String, String> fields);
     }
 
+    /** Items read so far in each full-list download, by type (shown on the setup screen). */
+    public static final Map<String, int[]> PROGRESS = new java.util.concurrent.ConcurrentHashMap<>();
+
+    public static int progress(String type) {
+        int[] c = PROGRESS.get(type);
+        return c == null ? 0 : c[0];
+    }
+
+    // Only the fields the app uses; everything else in each entry (cast, director, trailers,
+    // long descriptions…) is skipped without being stored, which makes big lists much faster.
+    private static final java.util.Set<String> CAT_FIELDS = new java.util.HashSet<>(java.util.Arrays.asList(
+            "category_id", "category_name"));
+    private static final java.util.Set<String> STREAM_FIELDS = new java.util.HashSet<>(java.util.Arrays.asList(
+            "stream_id", "series_id", "name", "stream_icon", "cover", "num", "container_extension",
+            "rating", "genre", "plot", "category_id", "added", "last_modified"));
+
     /** Streams a JSON array of flat objects; keeps memory low for huge VOD lists. */
-    private void readArray(String url, ObjectHandler h) throws IOException {
+    private void readArray(String url, java.util.Set<String> keep, ObjectHandler h) throws IOException {
         HttpURLConnection c = Http.open(url, ua);
         try (InputStream in = new BufferedInputStream(c.getInputStream(), 65536);
              JsonReader r = new JsonReader(new InputStreamReader(in, "UTF-8"))) {
@@ -238,6 +257,10 @@ public class XtreamApi {
                 r.beginObject();
                 while (r.hasNext()) {
                     String k = r.nextName();
+                    if (!keep.contains(k)) {
+                        r.skipValue();
+                        continue;
+                    }
                     JsonToken t = r.peek();
                     if (t == JsonToken.STRING || t == JsonToken.NUMBER) m.put(k, r.nextString());
                     else if (t == JsonToken.BOOLEAN) m.put(k, String.valueOf(r.nextBoolean()));

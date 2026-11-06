@@ -60,8 +60,8 @@ public final class VlcHolder {
     private static ArrayList<String> options(Prefs prefs) {
         ArrayList<String> o = new ArrayList<>();
         o.add("--http-reconnect");
-        o.add("--network-caching=2000");
-        o.add("--live-caching=2000");
+        o.add("--network-caching=1000"); // was 2 s: every channel waited for this before starting
+        o.add("--live-caching=1000");
         o.add("--clock-jitter=0");
         o.add("--clock-synchro=0");
         o.add("--audio-time-stretch");

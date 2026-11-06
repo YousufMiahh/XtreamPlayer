@@ -96,6 +96,10 @@ public class VlcEngine implements Engine {
         final Media m = new Media(vlc, Uri.parse(url));
         m.setHWDecoderEnabled(true, false);
         m.addOption(":http-user-agent=" + prefs.userAgent());
+        // Xtream live .ts streams are always MPEG-TS: saying so skips VLC's format probing,
+        // which was a big part of the wait before a channel appeared. (If a provider ever sends
+        // something else, the error retry switches to .m3u8, which doesn't use this.)
+        if (url.endsWith(".ts")) m.addOption(":demux=ts");
         if (startMs > 0) m.addOption(":start-time=" + (startMs / 1000.0));
         ops.execute(new Runnable() {
             public void run() {

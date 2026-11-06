@@ -134,7 +134,97 @@ public final class Repo {
         return new ArrayList<>(all.subList(0, Math.min(n, all.size())));
     }
 
-    public static boolean isRefreshing() { return refreshing; }
+    public static boolean isRefreshing() { return refreshing || setupRunning; }
+
+    // ------------------------------------------------------------ first-time setup
+
+    /** Progress callbacks for the setup screen (always delivered on the main thread). */
+    public interface SetupListener {
+        void started(String type);
+        void finished(String type, int count, Exception error);
+        void allDone(boolean ok);
+    }
+
+    private static volatile boolean setupRunning;
+    private static volatile SetupListener setupListener;
+    /** Called on the main thread whenever a section's list has been replaced (e.g. Home reloads its rows). */
+    public static volatile Runnable onUpdated;
+
+    public static void setSetupListener(SetupListener l) { setupListener = l; }
+
+    public static boolean isSetupRunning() { return setupRunning; }
+
+    /**
+     * Downloads the given sections: Live TV first (so it's ready soonest), then Movies and Series
+     * at the same time (most of the wait is the provider building each list, so overlapping
+     * them saves time). Keeps going if the setup screen is left.
+     */
+    public static synchronized void startSetup(final XtreamApi api, final Prefs prefs, final List<String> types) {
+        if (setupRunning) return;
+        setupRunning = true;
+        new Thread(new Runnable() {
+            public void run() {
+                boolean ok = true;
+                if (types.contains(Item.LIVE)) ok = setupStep(api, Item.LIVE);
+                List<Thread> parallel = new ArrayList<>();
+                final boolean[] results = {true, true};
+                String[] rest = {Item.MOVIE, Item.SERIES};
+                for (int i = 0; i < rest.length; i++) {
+                    if (!types.contains(rest[i])) continue;
+                    final int k = i;
+                    final String t = rest[i];
+                    Thread th = new Thread(new Runnable() {
+                        public void run() { results[k] = setupStep(api, t); }
+                    }, "setup-" + t);
+                    th.start();
+                    parallel.add(th);
+                }
+                for (Thread th : parallel) {
+                    try {
+                        th.join();
+                    } catch (InterruptedException ignored) {
+                    }
+                }
+                ok = ok && results[0] && results[1];
+                if (ok) prefs.setLastRefresh(System.currentTimeMillis());
+                setupRunning = false;
+                final boolean fok = ok;
+                Async.MAIN.post(new Runnable() {
+                    public void run() {
+                        SetupListener l = setupListener;
+                        if (l != null) l.allDone(fok);
+                    }
+                });
+            }
+        }, "library-setup").start();
+    }
+
+    private static boolean setupStep(XtreamApi api, final String type) {
+        Async.MAIN.post(new Runnable() {
+            public void run() {
+                SetupListener l = setupListener;
+                if (l != null) l.started(type);
+            }
+        });
+        int n = -1;
+        Exception err = null;
+        try {
+            n = downloadType(api, type);
+        } catch (Exception e) {
+            err = e;
+        } catch (OutOfMemoryError oom) {
+            err = new Exception("Not enough memory for this list");
+        }
+        final int fn = n;
+        final Exception fe = err;
+        Async.MAIN.post(new Runnable() {
+            public void run() {
+                SetupListener l = setupListener;
+                if (l != null) l.finished(type, fn, fe);
+            }
+        });
+        return err == null;
+    }
 
     /** True if a saved copy of the movie and series libraries exists on disk. */
     public static boolean hasLibrary(XtreamApi api) {
@@ -185,6 +275,12 @@ public final class Repo {
             LISTS.put(t + "|*", all);
             CATS.put(t, cats);
         }
+        Async.MAIN.post(new Runnable() {
+            public void run() {
+                Runnable r = onUpdated;
+                if (r != null) r.run();
+            }
+        });
         return all.size();
     }
 

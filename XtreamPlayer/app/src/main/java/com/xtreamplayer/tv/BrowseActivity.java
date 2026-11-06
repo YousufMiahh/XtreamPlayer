@@ -94,7 +94,7 @@ public class BrowseActivity extends Activity {
         Adapters.prepare(catList);
         catAdapter = new Adapters.TextRows(this);
         catAdapter.attach(catList);
-        cols.addView(catList, new LinearLayout.LayoutParams(Ui.dp(this, 300), ViewGroup.LayoutParams.MATCH_PARENT));
+        cols.addView(Glider.wrap(this, catList, new Glider[1]), new LinearLayout.LayoutParams(Ui.dp(this, 300), ViewGroup.LayoutParams.MATCH_PARENT));
 
         // ---- content column
         LinearLayout mid = new LinearLayout(this);
@@ -139,7 +139,8 @@ public class BrowseActivity extends Activity {
             }
         });
         contentAdapter.attach(content);
-        contentFrame.addView(content, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        View contentView = live ? Glider.wrap(this, content, new Glider[1]) : content; // channel list glides too
+        contentFrame.addView(contentView, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         emptyText = Ui.text(this, "", 19, Ui.TEXT2);
         emptyText.setGravity(Gravity.CENTER);
         contentFrame.addView(emptyText, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
@@ -306,7 +307,11 @@ public class BrowseActivity extends Activity {
         openCategory(c, pos, false);
     }
 
+    /** Direction of the last category move: 1 = down the list, -1 = up. */
+    private int slideDir = 1;
+
     private void openCategory(final Item cat, int pos, final boolean focusContent) {
+        if (catAdapter.active >= 0 && pos != catAdapter.active) slideDir = pos > catAdapter.active ? 1 : -1;
         currentCat = cat;
         catAdapter.active = pos;
         catAdapter.notifyDataSetChanged();
@@ -339,14 +344,20 @@ public class BrowseActivity extends Activity {
     private void show(List<Item> list, boolean focusContent) {
         spinner.setVisibility(View.GONE);
         contentAdapter.set(list);
-        // New category: the list fades in while rising slightly, like tvOS
+        // New category slides in from the direction you're moving through the list (like the top bar)
         android.view.animation.DecelerateInterpolator ease = new android.view.animation.DecelerateInterpolator(2f);
-        content.animate().cancel();
-        content.setAlpha(0f);
-        content.setTranslationY(Ui.dp(this, 28));
-        content.animate().alpha(1f).translationY(0f).setDuration(320).setInterpolator(ease).start();
-        header.setAlpha(0.3f);
-        header.animate().alpha(1f).setDuration(250).start();
+        View moving = live ? (View) content.getParent() : content; // live: the list and its highlight move together
+        float d = slideDir * Ui.dp(this, 56);
+        moving.animate().cancel();
+        moving.setAlpha(0f);
+        moving.setTranslationY(d);
+        moving.animate().alpha(1f).translationY(0f).setDuration(380).setInterpolator(ease).start();
+        header.animate().cancel();
+        header.setAlpha(0f);
+        header.setTranslationY(d * 0.5f);
+        header.animate().alpha(1f).translationY(0f).setDuration(320).setInterpolator(ease).start();
+        count.setAlpha(0f);
+        count.animate().alpha(1f).setStartDelay(80).setDuration(300).start();
         count.setText(list.size() == 1 ? "1 item" : list.size() + " items");
         boolean fav = currentCat != null && FAV.equals(currentCat.id);
         emptyText.setText(list.isEmpty()

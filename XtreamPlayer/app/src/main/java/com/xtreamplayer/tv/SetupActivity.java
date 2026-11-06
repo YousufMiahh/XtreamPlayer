@@ -88,7 +88,9 @@ public class SetupActivity extends Activity {
         col.addView(actions, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         setContentView(root);
-        run(0);
+        Repo.setSetupListener(listener);
+        status.post(ticker);
+        start(java.util.Arrays.asList(TYPES));
     }
 
     private View row(int i) {
@@ -115,47 +117,100 @@ public class SetupActivity extends Activity {
         return r;
     }
 
-    /** Downloads section i, then the next, on a background thread. */
-    private void run(final int i) {
-        if (i >= TYPES.length) {
-            finished();
-            return;
-        }
-        spinners[i].setVisibility(View.VISIBLE);
-        marks[i].setText("");
-        counts[i].setText("Downloading…");
-        counts[i].setTextColor(Ui.TEXT2);
-        status.setText("");
-        Async.run(new Async.Work<Integer>() {
-            public Integer run() throws Exception { return Repo.downloadType(api, TYPES[i]); }
-        }, new Async.Done<Integer>() {
-            public void done(Integer n, Exception e) {
-                if (stopped || isFinishing()) return;
-                spinners[i].setVisibility(View.INVISIBLE);
-                if (e != null || n == null) {
-                    marks[i].setText("✕");
-                    marks[i].setTextColor(Ui.RED);
-                    counts[i].setText("Didn't load");
-                    failed(i, e);
-                    return;
-                }
-                marks[i].setText("✓");
-                marks[i].setTextColor(0xFF34C759);
-                counts[i].setText(NumberFormat.getIntegerInstance(Locale.UK).format(n) + " " + UNITS[i]);
-                run(i + 1);
+    private final boolean[] running = new boolean[3], done = new boolean[3];
+    private final java.util.List<String> failedTypes = new java.util.ArrayList<>();
+
+    /** Updates the "so far" counters while lists are downloading. */
+    private final Runnable ticker = new Runnable() {
+        public void run() {
+            for (int i = 0; i < 3; i++) {
+                if (!running[i]) continue;
+                int n = XtreamApi.progress(TYPES[i]);
+                counts[i].setText(n == 0 ? "Waiting for your provider…"
+                        : NumberFormat.getIntegerInstance(Locale.UK).format(n) + " " + UNITS[i] + " so far…");
             }
-        });
+            status.postDelayed(this, 300);
+        }
+    };
+
+    private final Repo.SetupListener listener = new Repo.SetupListener() {
+        public void started(String type) {
+            int i = index(type);
+            running[i] = true;
+            spinners[i].setVisibility(View.VISIBLE);
+            marks[i].setText("");
+            counts[i].setTextColor(Ui.TEXT2);
+            counts[i].setText("Waiting for your provider…");
+        }
+
+        public void finished(String type, int n, Exception e) {
+            int i = index(type);
+            running[i] = false;
+            spinners[i].setVisibility(View.INVISIBLE);
+            if (e != null) {
+                marks[i].setText("✕");
+                marks[i].setTextColor(Ui.RED);
+                counts[i].setText("Didn't load");
+                failedTypes.add(type);
+                status.setText("Couldn't download " + NAMES[i] + ": " + Async.message(e));
+                return;
+            }
+            done[i] = true;
+            marks[i].setText("✓");
+            marks[i].setTextColor(0xFF34C759);
+            counts[i].setText(NumberFormat.getIntegerInstance(Locale.UK).format(n) + " " + UNITS[i]);
+            if (Item.LIVE.equals(type) && (running[1] || running[2] || !done[1] || !done[2])) offerContinue();
+        }
+
+        public void allDone(boolean ok) {
+            if (ok) {
+                actions.removeAllViews();
+                status.setText("All set");
+                status.setTextColor(Ui.TEXT);
+                status.postDelayed(new Runnable() {
+                    public void run() { goHome(); }
+                }, 700);
+            } else {
+                offerRetry();
+            }
+        }
+    };
+
+    private int index(String type) {
+        for (int i = 0; i < TYPES.length; i++) if (TYPES[i].equals(type)) return i;
+        return 0;
     }
 
-    private void failed(final int i, Exception e) {
-        status.setText("Couldn't download " + NAMES[i] + ": " + Async.message(e));
+    private void start(java.util.List<String> types) {
+        failedTypes.clear();
         actions.removeAllViews();
+        status.setText("");
+        for (String t : types) {
+            int i = index(t);
+            marks[i].setText("");
+            counts[i].setText("Waiting");
+            counts[i].setTextColor(Ui.TEXT3);
+        }
+        Repo.startSetup(api, prefs, types);
+    }
+
+    /** Live TV is ready: let you start watching while Movies and Series finish. */
+    private void offerContinue() {
+        actions.removeAllViews();
+        Button go = Ui.button(this, "Start Watching — Movies & Series will finish in the background");
+        go.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) { goHome(); }
+        });
+        actions.addView(go);
+        go.requestFocus();
+    }
+
+    private void offerRetry() {
+        actions.removeAllViews();
+        final java.util.List<String> retryTypes = new java.util.ArrayList<>(failedTypes);
         Button retry = Ui.button(this, "Try Again");
         retry.setOnClickListener(new View.OnClickListener() {
-            public void onClick(View v) {
-                actions.removeAllViews();
-                run(i);
-            }
+            public void onClick(View v) { start(retryTypes); }
         });
         Button skip = Ui.button(this, "Continue Anyway");
         skip.setOnClickListener(new View.OnClickListener() {
@@ -166,15 +221,6 @@ public class SetupActivity extends Activity {
         actions.addView(retry, l);
         actions.addView(skip, l);
         retry.requestFocus();
-    }
-
-    private void finished() {
-        Repo.markRefreshed(prefs);
-        status.setText("All set");
-        status.setTextColor(Ui.TEXT);
-        status.postDelayed(new Runnable() {
-            public void run() { goHome(); }
-        }, 700);
     }
 
     private void goHome() {
@@ -189,6 +235,8 @@ public class SetupActivity extends Activity {
     @Override
     protected void onDestroy() {
         stopped = true;
+        Repo.setSetupListener(null); // downloads carry on in the background
+        status.removeCallbacks(ticker);
         super.onDestroy();
     }
 

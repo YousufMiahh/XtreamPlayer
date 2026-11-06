@@ -349,6 +349,9 @@ public class PlayerActivity extends Activity implements Engine.Listener {
 
     /** Settings → Video Player: 0 Automatic (VLC for Live TV, Android for Movies & Series), 1 Android, 2 VLC. */
     private boolean wantsVlc(Item it) {
+        // Live TV always uses VLC (the Android player doesn't cope with these live streams),
+        // unless "Android player for everything" was picked in Settings.
+        if (Item.LIVE.equals(it.type)) return prefs.engineMode() != 1;
         if (prefs.vlcBroken()) return false; // VLC crashed on this TV before
         int mode = prefs.engineMode();
         if (mode == 2) return true;
@@ -452,7 +455,7 @@ public class PlayerActivity extends Activity implements Engine.Listener {
             load(0);
             return;
         }
-        if (!triedOtherEngine && prefs.engineMode() == 0) { // last resort: the other engine
+        if (!isLive() && !triedOtherEngine && prefs.engineMode() == 0) { // movies: try the other engine
             triedOtherEngine = true;
             retries = 0;
             liveFormat = prefs.liveFormat();
@@ -507,7 +510,7 @@ public class PlayerActivity extends Activity implements Engine.Listener {
             engine.load(api.playUrl(current(), liveFormat), startMs);
         } catch (Throwable t) { // VLC failed to start: record it and use the Android player
             App.writeCrash(this, t);
-            if (!usingVlc) throw t instanceof RuntimeException ? (RuntimeException) t : new RuntimeException(t);
+            if (!usingVlc || isLive()) throw t instanceof RuntimeException ? (RuntimeException) t : new RuntimeException(t);
             prefs.setVlcBroken(true);
             startEngine(false);
             status("VLC couldn't start — using the Android player");
@@ -739,6 +742,7 @@ public class PlayerActivity extends Activity implements Engine.Listener {
         }
         if (usingVlc) note("With VLC, size changes apply from the next video");
 
+        if (!isLive()) {
         header("Player");
         option("Android player", !usingVlc, new Runnable() {
             public void run() {
@@ -756,7 +760,8 @@ public class PlayerActivity extends Activity implements Engine.Listener {
                 switchEngine(true, "Switched to VLC player");
             }
         });
-        note("Picture freezing? Try the other player — it's remembered for this " + (isLive() ? "channel." : "video."));
+        note("Picture freezing? Try the other player — it's remembered for this video.");
+        }
 
         if (focusedIndex >= 0 && focusedIndex < trackList.getChildCount() && trackList.getChildAt(focusedIndex).isFocusable()) {
             trackList.getChildAt(focusedIndex).requestFocus();

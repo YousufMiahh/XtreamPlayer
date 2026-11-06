@@ -100,6 +100,13 @@ public class HomeActivity extends Activity {
 
     /** Loads the saved library (instant) and refreshes it in the background when it's due. */
     private void startLibrary() {
+        Repo.onUpdated = new Runnable() { // Movies/Series finished in the background: refresh the rows
+            public void run() { if (!isFinishing()) loadNewArrivals(); }
+        };
+        if (Repo.isRefreshing()) { // setup is still finishing Movies & Series
+            loadNewArrivals();
+            return;
+        }
         if (Repo.isDue(prefs) && !Repo.hasLibrary(api)) {
             // First run for this account: download everything once, then fill the rows.
             if (localRows.getChildCount() == 0) {

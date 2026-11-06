@@ -26,7 +26,15 @@ public final class Adapters {
     }
 
     /** Re-applies focus styling to the visible children of a list/grid. Call on selection/focus changes. */
+    private static final java.util.WeakHashMap<AbsListView, Glider> GLIDERS = new java.util.WeakHashMap<>();
+
+    static void setGlider(AbsListView list, Glider g) { GLIDERS.put(list, g); }
+
+    static boolean hasGlider(AbsListView list) { return list != null && GLIDERS.containsKey(list); }
+
     public static void refresh(AbsListView list) {
+        Glider g = GLIDERS.get(list);
+        if (g != null) g.update();
         int first = list.getFirstVisiblePosition();
         int sel = list.getSelectedItemPosition();
         boolean focus = list.hasFocus();
@@ -65,6 +73,8 @@ public final class Adapters {
         final ImageView logo;
         final FrameLayout logoBox;
         private boolean hot, active;
+        /** The list draws a gliding highlight behind the rows, so the row itself stays clear. */
+        boolean glide;
 
         public RowCell(Context c, boolean withNumber, boolean withLogo) {
             super(c);
@@ -122,7 +132,7 @@ public final class Adapters {
             if (h == hot) return;
             hot = h;
             paint();
-            if (h && animate) { // highlight fades on rather than snapping
+            if (h && animate && !glide) { // highlight fades on rather than snapping
                 final android.graphics.drawable.Drawable bg = getBackground();
                 android.animation.ValueAnimator va = android.animation.ValueAnimator.ofInt(60, 255);
                 va.setDuration(160);
@@ -137,7 +147,8 @@ public final class Adapters {
 
         private void paint() {
             Context c = getContext();
-            if (hot) setBackground(Ui.rounded(c, Ui.FOCUS_BG, 0, 12));
+            if (hot && !glide) setBackground(Ui.rounded(c, Ui.FOCUS_BG, 0, 12));
+            else if (hot) setBackground(null);
             else if (active) setBackground(Ui.rounded(c, Ui.SURFACE_HI, 0, 12));
             else setBackground(null);
             title.setTextColor(hot ? Ui.ON_FOCUS : Ui.TEXT);
@@ -234,6 +245,7 @@ public final class Adapters {
         @Override
         public View getView(int pos, View v, ViewGroup parent) {
             RowCell cell = v instanceof RowCell ? (RowCell) v : new RowCell(ctx, false, false);
+            cell.glide = hasGlider(list);
             Item it = getItem(pos);
             cell.bind(null, null, it.name, it.info, it.num);
             cell.setActive(pos == active);
@@ -252,6 +264,7 @@ public final class Adapters {
         @Override
         public View getView(int pos, View v, ViewGroup parent) {
             RowCell cell = v instanceof RowCell ? (RowCell) v : new RowCell(ctx, true, true);
+            cell.glide = hasGlider(list);
             Item it = getItem(pos);
             String trail = prefs.isFav(it) ? "★" : null;
             if (playingId != null && playingId.equals(it.id)) trail = "▶";
