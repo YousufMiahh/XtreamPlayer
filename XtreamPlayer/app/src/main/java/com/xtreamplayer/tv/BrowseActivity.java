@@ -430,11 +430,38 @@ public class BrowseActivity extends Activity {
     @Override
     public void onBackPressed() {
         if (content.hasFocus()) {
-            catList.requestFocus();
+            backToCategories();
             return;
         }
         super.onBackPressed();
         overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out);
+    }
+
+    /**
+     * ◀ from the channel list (or the first column of a poster grid) always returns to the
+     * categories, landing on the category you're in. Android's automatic focus search
+     * didn't always find the list (e.g. from Recent Channels).
+     */
+    @Override
+    public boolean dispatchKeyEvent(KeyEvent e) {
+        if (e.getAction() == KeyEvent.ACTION_DOWN && e.getKeyCode() == KeyEvent.KEYCODE_DPAD_LEFT && content.hasFocus()) {
+            int pos = content.getSelectedItemPosition();
+            boolean firstColumn = !(content instanceof GridView)
+                    || pos < 0 || pos % Math.max(1, ((GridView) content).getNumColumns()) == 0;
+            if (firstColumn) {
+                backToCategories();
+                return true;
+            }
+        }
+        return super.dispatchKeyEvent(e);
+    }
+
+    private void backToCategories() {
+        catList.requestFocus();
+        if (catAdapter.active >= 0 && catAdapter.active < catAdapter.getCount()) {
+            catList.setSelection(catAdapter.active);
+        }
+        Adapters.refresh(catList);
     }
 
     @Override
