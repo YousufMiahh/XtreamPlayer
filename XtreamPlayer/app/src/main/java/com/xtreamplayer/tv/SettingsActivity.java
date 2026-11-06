@@ -53,6 +53,7 @@ public class SettingsActivity extends Activity {
         col.addView(list, lp);
         scroll.addView(col);
         setContentView(scroll);
+        TopBar.animateIn(this, list);
         build();
         loadStatus();
     }

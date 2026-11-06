@@ -105,7 +105,7 @@ public class HomeActivity extends Activity {
             if (inLocal || getCurrentFocus() == null) focusFirstCard();
         }
         resumedOnce = true;
-        TopBar.onHomeResumed(this);
+        TopBar.onHomeResumed(this, localRows, remoteRows, empty);
     }
 
     private boolean isInside(View v, View parent) {

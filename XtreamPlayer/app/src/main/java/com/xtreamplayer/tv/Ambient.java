@@ -23,20 +23,45 @@ public final class Ambient {
 
     private static class Holder {
         GradientDrawable g;
-        int current;
+        int current, base;
         String url;
         ValueAnimator anim;
     }
 
     private static final WeakHashMap<Activity, Holder> HOLDERS = new WeakHashMap<>();
 
+    /** Colour handed from the screen you just left, so the new one can fade from it. */
+    private static Integer handoff;
+
     /** Gives the window a tinted gradient background. Call after Ui.init and before setContentView. */
     public static void install(Activity a, int base) {
         Holder h = new Holder();
-        h.current = tone(base);
+        h.base = base;
+        h.current = handoff != null ? handoff : tone(base);
         h.g = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, colors(h.current));
         a.getWindow().setBackgroundDrawable(h.g);
         HOLDERS.put(a, h);
+        if (handoff != null) {
+            handoff = null;
+            animateTo(h, tone(base));
+        }
+    }
+
+    /** Remember this screen's colour for the next one (called when switching sections). */
+    public static void handOff(Activity from) {
+        Holder h = HOLDERS.get(from);
+        handoff = h == null ? null : h.current;
+    }
+
+    /** A screen coming back into view (e.g. Home): fade from the colour handed off to its own. */
+    public static void takeHandoff(Activity a) {
+        Holder h = HOLDERS.get(a);
+        if (h == null || handoff == null) return;
+        h.current = handoff;
+        h.g.setColors(colors(h.current));
+        h.url = null;
+        handoff = null;
+        animateTo(h, tone(h.base));
     }
 
     /** Fade the background towards the main colour of this artwork. */

@@ -151,6 +151,7 @@ public class BrowseActivity extends Activity {
         if (live) cols.addView(buildInfoPanel(), panelParams());
 
         setContentView(root);
+        TopBar.animateIn(this, cols);
         wire();
         loadCategories();
     }

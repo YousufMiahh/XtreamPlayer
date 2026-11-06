@@ -78,6 +78,7 @@ public class SearchActivity extends Activity {
         }
         scroll.addView(col);
         setContentView(scroll);
+        TopBar.animateIn(this, box, status, slots[0], slots[1], slots[2]);
 
         box.addTextChangedListener(new TextWatcher() {
             public void beforeTextChanged(CharSequence s, int a, int b, int c) {}

@@ -1,10 +1,13 @@
 package com.xtreamplayer.tv;
 
+import android.animation.ValueAnimator;
 import android.app.Activity;
 import android.content.Intent;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.ViewTreeObserver;
+import android.view.animation.DecelerateInterpolator;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
@@ -13,7 +16,11 @@ import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Locale;
 
-/** tvOS-style tab bar: centred pills, the current one tinted, the focused one white. Clock on the right. */
+/**
+ * tvOS-style tab bar. A single highlight glides between tabs as you move, and switching
+ * sections keeps the bar still while the page below fades and slides in from the side
+ * you're moving towards (and the background colour blends across).
+ */
 public final class TopBar {
     private TopBar() {}
 
@@ -25,6 +32,25 @@ public final class TopBar {
             {SEARCH, "Search"}, {SETTINGS, "Settings"},
     };
 
+    static final String EXTRA_TAB = "focus_tab";
+    private static final DecelerateInterpolator EASE = new DecelerateInterpolator(2f);
+
+    private static String pendingHomeFocus;
+    /** -1 = the new page comes in from the left, 1 = from the right, 0 = no transition pending. */
+    private static int enterDirection;
+    /** Where the highlight was on the screen we just left, so it can glide on from there. */
+    private static float lastX = -1, lastW = -1;
+    /** Set when we switched by hovering: the next bar's highlight glides on from lastX. */
+    private static boolean glideHandoff;
+
+    /** Highlight state for one bar. */
+    private static class Glide {
+        View pill;
+        float x, w;
+        boolean shown;
+        ValueAnimator anim;
+    }
+
     public static View build(final Activity a, final String current) {
         FrameLayout bar = new FrameLayout(a);
         bar.setClipChildren(false);
@@ -35,21 +61,40 @@ public final class TopBar {
         brand.setTextColor(Ui.TEXT);
         bar.addView(brand, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.START | Gravity.CENTER_VERTICAL));
 
-        LinearLayout tabs = new LinearLayout(a);
+        // Rounded track holding the gliding highlight underneath the tab labels
+        final FrameLayout track = new FrameLayout(a);
+        int tp = Ui.dp(a, 6);
+        track.setPadding(tp, tp, tp, tp);
+        track.setBackground(Ui.rounded(a, Ui.SURFACE_LO, 0, 28));
+        track.setClipChildren(false);
+        track.setClipToPadding(false);
+
+        final Glide glide = new Glide();
+        glide.pill = new View(a);
+        glide.pill.setBackground(Ui.rounded(a, Ui.FOCUS_BG, 0, 22));
+        glide.pill.setAlpha(0f);
+        glide.pill.setElevation(Ui.dp(a, 6));
+        track.addView(glide.pill, new FrameLayout.LayoutParams(0, 0, Gravity.TOP | Gravity.START));
+
+        final LinearLayout tabs = new LinearLayout(a);
         tabs.setOrientation(LinearLayout.HORIZONTAL);
         tabs.setGravity(Gravity.CENTER);
-        tabs.setPadding(Ui.dp(a, 6), Ui.dp(a, 6), Ui.dp(a, 6), Ui.dp(a, 6));
         tabs.setClipChildren(false);
-        tabs.setClipToPadding(false);
+        tabs.setTranslationZ(Ui.dp(a, 8)); // labels draw above the highlight
+        track.addView(tabs, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
         final String wanted = a.getIntent() == null ? null : a.getIntent().getStringExtra(EXTRA_TAB);
-        tabs.setBackground(Ui.rounded(a, Ui.SURFACE_LO, 0, 28));
         for (final String[] t : TABS) {
             final TextView tab = Ui.medium(a, t[1], 17, Ui.TEXT);
             tab.setTag("tab:" + t[0]);
             boolean on = t[0].equals(current);
             tab.setTextColor(Ui.focusText(on ? Ui.TEXT : Ui.TEXT2));
             tab.setTypeface(on ? Ui.semibold() : Ui.medium());
-            tab.setBackground(Ui.pill(a, on ? Ui.SURFACE_HI : 0, 22));
+            // The current section keeps a soft pill; the focused one is shown by the gliding highlight.
+            android.graphics.drawable.StateListDrawable bg = new android.graphics.drawable.StateListDrawable();
+            bg.addState(new int[]{android.R.attr.state_focused}, new android.graphics.drawable.ColorDrawable(0));
+            bg.addState(new int[]{}, on ? Ui.rounded(a, Ui.SURFACE_HI, 0, 22) : new android.graphics.drawable.ColorDrawable(0));
+            tab.setBackground(bg);
             int px = Ui.dp(a, 22), py = Ui.dp(a, 11);
             tab.setPadding(px, py, px, py);
             tab.setFocusable(true);
@@ -65,7 +110,10 @@ public final class TopBar {
             tab.setOnFocusChangeListener(new View.OnFocusChangeListener() {
                 public void onFocusChange(View v, boolean has) {
                     v.removeCallbacks(open);
-                    if (has && !t[0].equals(current) && !SETTINGS.equals(t[0])) v.postDelayed(open, 450);
+                    if (has) {
+                        glideTo(glide, tabs, tab);
+                        if (!t[0].equals(current) && !SETTINGS.equals(t[0])) v.postDelayed(open, 450);
+                    }
                 }
             });
             LinearLayout.LayoutParams tlp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
@@ -75,22 +123,24 @@ public final class TopBar {
                 tab.post(new Runnable() { public void run() { tab.requestFocus(); } });
             }
         }
-        bar.addView(tabs, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER));
+        bar.addView(track, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER));
 
-        // Coming up from the page always lands on the current tab (like tvOS), so moving up
-        // never opens a different section by accident.
-        final android.view.ViewTreeObserver.OnGlobalFocusChangeListener entry =
-                new android.view.ViewTreeObserver.OnGlobalFocusChangeListener() {
-                    public void onGlobalFocusChanged(View oldFocus, View newFocus) {
-                        if (newFocus == null || oldFocus == null) return;
-                        boolean toTab = newFocus.getParent() == tabs;
-                        boolean fromTab = oldFocus.getParent() == tabs;
-                        if (toTab && !fromTab && !("tab:" + current).equals(newFocus.getTag())) {
-                            final View cur = tabs.findViewWithTag("tab:" + current);
-                            if (cur != null) cur.post(new Runnable() { public void run() { cur.requestFocus(); } });
-                        }
-                    }
-                };
+        // Coming up from the page always lands on the current tab (like tvOS), and the
+        // highlight fades away when you move down into the page.
+        final ViewTreeObserver.OnGlobalFocusChangeListener entry = new ViewTreeObserver.OnGlobalFocusChangeListener() {
+            public void onGlobalFocusChanged(View oldFocus, View newFocus) {
+                boolean toTab = newFocus != null && newFocus.getParent() == tabs;
+                boolean fromTab = oldFocus != null && oldFocus.getParent() == tabs;
+                if (toTab && !fromTab && oldFocus != null && !("tab:" + current).equals(newFocus.getTag())) {
+                    final View cur = tabs.findViewWithTag("tab:" + current);
+                    if (cur != null) cur.post(new Runnable() { public void run() { cur.requestFocus(); } });
+                }
+                if (!toTab && glide.shown) {
+                    glide.shown = false;
+                    glide.pill.animate().alpha(0f).scaleX(0.92f).scaleY(0.92f).setDuration(160).start();
+                }
+            }
+        };
         tabs.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
             public void onViewAttachedToWindow(View v) { v.getViewTreeObserver().addOnGlobalFocusChangeListener(entry); }
             public void onViewDetachedFromWindow(View v) { v.getViewTreeObserver().removeOnGlobalFocusChangeListener(entry); }
@@ -112,8 +162,62 @@ public final class TopBar {
         return bar;
     }
 
-    static final String EXTRA_TAB = "focus_tab";
-    private static String pendingHomeFocus;
+    /** Slide (and stretch) the highlight to sit behind this tab. */
+    private static void glideTo(final Glide g, final LinearLayout tabs, final View tab) {
+        if (tab.getWidth() == 0) { // not laid out yet
+            tab.post(new Runnable() { public void run() { if (tab.hasFocus()) glideTo(g, tabs, tab); } });
+            return;
+        }
+        final float tx = tabs.getLeft() + tab.getLeft(), tw = tab.getWidth();
+        final FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) g.pill.getLayoutParams();
+        lp.height = tab.getHeight();
+        lp.topMargin = tabs.getTop() + tab.getTop() - ((View) tabs.getParent()).getPaddingTop();
+        if (g.anim != null) g.anim.cancel();
+
+        float fromX, fromW;
+        if (g.shown) {
+            fromX = g.x;
+            fromW = g.w;
+        } else if (lastX >= 0 && glideHandoff) { // continue from where it was on the last screen
+            glideHandoff = false;
+            fromX = lastX;
+            fromW = lastW;
+        } else { // arriving from the page: appear in place
+            fromX = tx;
+            fromW = tw;
+        }
+        g.pill.animate().cancel();
+        if (!g.shown) {
+            g.pill.setScaleX(fromX == tx ? 0.92f : 1f);
+            g.pill.setScaleY(fromX == tx ? 0.92f : 1f);
+            g.pill.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(180).setInterpolator(EASE).start();
+        }
+        g.shown = true;
+        final float fx = fromX, fw = fromW;
+        apply(g, lp, fx, fw);
+        g.anim = ValueAnimator.ofFloat(0f, 1f);
+        g.anim.setDuration(280);
+        g.anim.setInterpolator(EASE);
+        g.anim.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
+            public void onAnimationUpdate(ValueAnimator v) {
+                float f = (Float) v.getAnimatedValue();
+                apply(g, lp, fx + (tx - fx) * f, fw + (tw - fw) * f);
+            }
+        });
+        g.anim.start();
+    }
+
+    private static void apply(Glide g, FrameLayout.LayoutParams lp, float x, float w) {
+        g.x = x;
+        g.w = w;
+        lastX = x;
+        lastW = w;
+        lp.width = Math.round(w);
+        g.pill.setTranslationX(x - ((View) g.pill.getParent()).getPaddingLeft());
+        g.pill.setLayoutParams(lp);
+    }
+
+    // ------------------------------------------------------------ section switching
 
     /** True while one of the top tabs has focus (screens then don't grab focus for their content). */
     public static boolean tabFocused(Activity a) {
@@ -126,19 +230,46 @@ public final class TopBar {
         if (t != null) t.requestFocus();
     }
 
-    /** Home calls this when it comes back; puts focus on its tab if we got there by hovering. */
-    public static void onHomeResumed(Activity home) {
+    /** Home calls this when it comes back; animates its page in and focuses its tab if we hovered there. */
+    public static void onHomeResumed(Activity home, View... content) {
+        if (enterDirection != 0) {
+            Ambient.takeHandoff(home);
+            animateIn(home, content);
+        }
         if (HOME.equals(pendingHomeFocus)) focusTab(home, HOME);
         pendingHomeFocus = null;
+    }
+
+    /** Fade and slide a screen's content in after a tab switch (the bar itself stays still). */
+    public static void animateIn(Activity a, View... content) {
+        int dir = enterDirection;
+        enterDirection = 0;
+        if (dir == 0) return;
+        float dx = dir * Ui.dp(a, 64);
+        for (View v : content) {
+            if (v == null) continue;
+            v.animate().cancel();
+            v.setAlpha(0f);
+            v.setTranslationX(dx);
+            v.animate().alpha(1f).translationX(0f).setStartDelay(60).setDuration(420).setInterpolator(EASE).start();
+        }
+    }
+
+    private static int order(String id) {
+        for (int i = 0; i < TABS.length; i++) if (TABS[i][0].equals(id)) return i;
+        return 0;
     }
 
     /** Switch section. Home is always at the bottom of the stack. */
     public static void go(Activity from, String current, String target, boolean byHover) {
         if (target.equals(current)) return;
+        enterDirection = order(target) > order(current) ? 1 : -1;
+        glideHandoff = byHover;
+        Ambient.handOff(from);
         if (HOME.equals(target)) {
             pendingHomeFocus = byHover ? HOME : null;
             from.finish();
-            from.overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out);
+            from.overridePendingTransition(0, 0);
             return;
         }
         Intent i;
@@ -150,8 +281,9 @@ public final class TopBar {
             i = new Intent(from, SettingsActivity.class);
         }
         if (byHover) i.putExtra(EXTRA_TAB, target);
+        i.addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION);
         from.startActivity(i);
         if (!HOME.equals(current)) from.finish();
-        from.overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out);
+        from.overridePendingTransition(0, 0);
     }
 }
