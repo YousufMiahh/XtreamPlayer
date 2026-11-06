@@ -201,25 +201,33 @@ public class Prefs {
     public boolean autoRecover() { return sp.getBoolean("auto_recover", true); }
     public void setAutoRecover(boolean b) { sp.edit().putBoolean("auto_recover", b).apply(); }
 
-    /** 0 Automatic (Android player, VLC for streams that freeze), 1 Android player only, 2 VLC only. */
+    /** 0 Automatic (VLC for Live TV, Android player for Movies & Series), 1 Android player only, 2 VLC only. */
     public int engineMode() { return Math.min(sp.getInt("engine", 0), 2); }
     public void setEngineMode(int m) { sp.edit().putInt("engine", m).apply(); }
 
-    /** Channels/videos that froze on the Android player and now open in VLC (per account). */
-    public boolean prefersVlc(Item it) {
-        return sp.getStringSet(ns() + "vlc_items", new HashSet<String>()).contains(it.key());
+    /**
+     * A player picked for one channel/video, either by you in the player menu or automatically
+     * after a freeze: Boolean.TRUE = VLC, Boolean.FALSE = Android player, null = use the default.
+     */
+    public Boolean playerChoice(Item it) {
+        if (set("vlc_items").contains(it.key())) return Boolean.TRUE;
+        if (set("exo_items").contains(it.key())) return Boolean.FALSE;
+        return null;
     }
 
-    public void setPrefersVlc(Item it, boolean vlc) {
-        Set<String> s = new HashSet<>(sp.getStringSet(ns() + "vlc_items", new HashSet<String>()));
-        if (vlc) s.add(it.key());
-        else s.remove(it.key());
-        sp.edit().putStringSet(ns() + "vlc_items", s).apply();
+    public void setPlayerChoice(Item it, boolean vlc) {
+        Set<String> v = new HashSet<>(set("vlc_items")), x = new HashSet<>(set("exo_items"));
+        v.remove(it.key());
+        x.remove(it.key());
+        (vlc ? v : x).add(it.key());
+        sp.edit().putStringSet(ns() + "vlc_items", v).putStringSet(ns() + "exo_items", x).apply();
     }
 
-    public int vlcItemCount() { return sp.getStringSet(ns() + "vlc_items", new HashSet<String>()).size(); }
+    public int playerChoiceCount() { return set("vlc_items").size() + set("exo_items").size(); }
 
-    public void clearVlcItems() { sp.edit().remove(ns() + "vlc_items").apply(); }
+    public void clearPlayerChoices() { sp.edit().remove(ns() + "vlc_items").remove(ns() + "exo_items").apply(); }
+
+    private Set<String> set(String k) { return sp.getStringSet(ns() + k, new HashSet<String>()); }
 
     public boolean darkTheme() { return sp.getBoolean("dark", true); }
     public void setDarkTheme(boolean b) { sp.edit().putBoolean("dark", b).apply(); }

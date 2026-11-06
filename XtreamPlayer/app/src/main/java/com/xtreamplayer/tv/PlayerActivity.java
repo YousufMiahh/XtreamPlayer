@@ -72,7 +72,7 @@ public class PlayerActivity extends Activity implements Engine.Listener {
     // State
     private String liveFormat;
     private int retries;
-    private boolean triedAltFormat, triedVlc;
+    private boolean triedAltFormat, triedOtherEngine;
     private boolean firstStart = true;
     private long seekTarget = -1, burst;
     private int lastRendered = -1, stallTicks, recoveries;
@@ -344,12 +344,14 @@ public class PlayerActivity extends Activity implements Engine.Listener {
 
     // ------------------------------------------------------------ engines
 
-    /** Settings → Video Player: 0 Automatic, 1 Android player, 2 VLC. */
+    /** Settings → Video Player: 0 Automatic (VLC for Live TV, Android for Movies & Series), 1 Android, 2 VLC. */
     private boolean wantsVlc(Item it) {
         int mode = prefs.engineMode();
         if (mode == 2) return true;
         if (mode == 1) return false;
-        return prefs.prefersVlc(it); // Automatic: channels/videos that froze before
+        Boolean choice = prefs.playerChoice(it);
+        if (choice != null) return choice;
+        return Item.LIVE.equals(it.type);
     }
 
     private void startEngine(boolean vlc) {
@@ -446,11 +448,11 @@ public class PlayerActivity extends Activity implements Engine.Listener {
             load(0);
             return;
         }
-        if (!usingVlc && !triedVlc && prefs.engineMode() == 0) { // last resort: the other engine
-            triedVlc = true;
+        if (!triedOtherEngine && prefs.engineMode() == 0) { // last resort: the other engine
+            triedOtherEngine = true;
             retries = 0;
             liveFormat = prefs.liveFormat();
-            switchEngine(true, "Trying VLC player…");
+            switchEngine(!usingVlc, usingVlc ? "Trying Android player…" : "Trying VLC player…");
             return;
         }
         errorText.setText("Can't play this " + (isLive() ? "channel" : "video") + "\n" + what
@@ -511,7 +513,7 @@ public class PlayerActivity extends Activity implements Engine.Listener {
     private void resetLiveState() {
         retries = 0;
         triedAltFormat = false;
-        triedVlc = false;
+        triedOtherEngine = false;
         recoveries = 0;
         liveFormat = prefs.liveFormat();
     }
@@ -536,8 +538,8 @@ public class PlayerActivity extends Activity implements Engine.Listener {
         }
         if (++stallTicks < 3) return;
         stallTicks = 0;
-        if (prefs.engineMode() == 0 && !usingVlc) {
-            prefs.setPrefersVlc(current(), true);
+        if (prefs.engineMode() == 0 && !usingVlc && prefs.playerChoice(current()) == null) {
+            prefs.setPlayerChoice(current(), true);
             switchEngine(true, "Picture froze — switching to VLC player");
             return;
         }
@@ -717,7 +719,7 @@ public class PlayerActivity extends Activity implements Engine.Listener {
         option("Android player", !usingVlc, new Runnable() {
             public void run() {
                 if (!usingVlc) return;
-                prefs.setPrefersVlc(current(), false);
+                prefs.setPlayerChoice(current(), false);
                 hidePanels();
                 switchEngine(false, "Switched to Android player");
             }
@@ -725,7 +727,7 @@ public class PlayerActivity extends Activity implements Engine.Listener {
         option("VLC player", usingVlc, new Runnable() {
             public void run() {
                 if (usingVlc) return;
-                prefs.setPrefersVlc(current(), true);
+                prefs.setPlayerChoice(current(), true);
                 hidePanels();
                 switchEngine(true, "Switched to VLC player");
             }
