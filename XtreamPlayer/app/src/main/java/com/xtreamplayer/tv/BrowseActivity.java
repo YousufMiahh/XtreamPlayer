@@ -474,8 +474,7 @@ public class BrowseActivity extends Activity {
             backToCategories();
             return;
         }
-        super.onBackPressed();
-        overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out);
+        TopBar.back(this);
     }
 
     /**

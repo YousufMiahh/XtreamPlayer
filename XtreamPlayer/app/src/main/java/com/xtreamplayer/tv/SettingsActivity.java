@@ -382,7 +382,6 @@ public class SettingsActivity extends Activity {
 
     @Override
     public void onBackPressed() {
-        super.onBackPressed();
-        overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out);
+        TopBar.back(this);
     }
 }

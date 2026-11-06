@@ -76,7 +76,7 @@ public final class TopBar {
         glide.pill.setElevation(Ui.dp(a, 6));
         track.addView(glide.pill, new FrameLayout.LayoutParams(0, 0, Gravity.TOP | Gravity.START));
 
-        final LinearLayout tabs = new LinearLayout(a);
+        final LinearLayout tabs = new TabRow(a, current);
         tabs.setOrientation(LinearLayout.HORIZONTAL);
         tabs.setGravity(Gravity.CENTER);
         tabs.setClipChildren(false);
@@ -130,11 +130,6 @@ public final class TopBar {
         final ViewTreeObserver.OnGlobalFocusChangeListener entry = new ViewTreeObserver.OnGlobalFocusChangeListener() {
             public void onGlobalFocusChanged(View oldFocus, View newFocus) {
                 boolean toTab = newFocus != null && newFocus.getParent() == tabs;
-                boolean fromTab = oldFocus != null && oldFocus.getParent() == tabs;
-                if (toTab && !fromTab && oldFocus != null && !("tab:" + current).equals(newFocus.getTag())) {
-                    final View cur = tabs.findViewWithTag("tab:" + current);
-                    if (cur != null) cur.post(new Runnable() { public void run() { cur.requestFocus(); } });
-                }
                 if (!toTab && glide.shown) {
                     glide.shown = false;
                     glide.pill.animate().alpha(0f).scaleX(0.92f).scaleY(0.92f).setDuration(160).start();
@@ -160,6 +155,33 @@ public final class TopBar {
             public void onViewDetachedFromWindow(View v) { v.removeCallbacks(tick); }
         });
         return bar;
+    }
+
+    /**
+     * The row of tabs. When focus arrives from the page below, only the current section's tab
+     * is offered as a target, so moving up lands straight on it (no flash of another tab).
+     */
+    private static class TabRow extends LinearLayout {
+        private final String current;
+
+        TabRow(android.content.Context c, String current) {
+            super(c);
+            this.current = current;
+        }
+
+        @Override
+        public void addFocusables(java.util.ArrayList<View> views, int direction, int mode) {
+            View focused = getRootView().findFocus();
+            boolean inside = focused != null && focused.getParent() == this;
+            if (!inside && focused != null) {
+                View cur = findViewWithTag("tab:" + current);
+                if (cur != null) {
+                    views.add(cur);
+                    return;
+                }
+            }
+            super.addFocusables(views, direction, mode);
+        }
     }
 
     /** Slide (and stretch) the highlight to sit behind this tab. */
@@ -231,13 +253,27 @@ public final class TopBar {
     }
 
     /** Home calls this when it comes back; animates its page in and focuses its tab if we hovered there. */
-    public static void onHomeResumed(Activity home, View... content) {
+    public static void onHomeResumed(final Activity home, View... content) {
         if (enterDirection != 0) {
             Ambient.takeHandoff(home);
             animateIn(home, content);
         }
-        if (HOME.equals(pendingHomeFocus)) focusTab(home, HOME);
+        // Back on Home: if its tab bar still had another tab focused (the one you left from),
+        // move the highlight to Home.
+        View f = home.getCurrentFocus();
+        boolean otherTab = f != null && f.getTag() instanceof String
+                && ((String) f.getTag()).startsWith("tab:") && !("tab:" + HOME).equals(f.getTag());
+        if (HOME.equals(pendingHomeFocus) || otherTab) focusTab(home, HOME);
         pendingHomeFocus = null;
+    }
+
+    /** Back from a section to Home, with the same slide as the tabs. */
+    public static void back(Activity from) {
+        enterDirection = -1;
+        glideHandoff = false;
+        Ambient.handOff(from);
+        from.finish();
+        from.overridePendingTransition(0, 0);
     }
 
     /** Fade and slide a screen's content in after a tab switch (the bar itself stays still). */
