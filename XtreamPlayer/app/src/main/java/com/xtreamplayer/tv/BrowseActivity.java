@@ -322,6 +322,14 @@ public class BrowseActivity extends Activity {
     private void show(List<Item> list, boolean focusContent) {
         spinner.setVisibility(View.GONE);
         contentAdapter.set(list);
+        // New category: the list fades in while rising slightly, like tvOS
+        android.view.animation.DecelerateInterpolator ease = new android.view.animation.DecelerateInterpolator(2f);
+        content.animate().cancel();
+        content.setAlpha(0f);
+        content.setTranslationY(Ui.dp(this, 28));
+        content.animate().alpha(1f).translationY(0f).setDuration(320).setInterpolator(ease).start();
+        header.setAlpha(0.3f);
+        header.animate().alpha(1f).setDuration(250).start();
         count.setText(list.size() == 1 ? "1 item" : list.size() + " items");
         boolean fav = currentCat != null && FAV.equals(currentCat.id);
         emptyText.setText(list.isEmpty()

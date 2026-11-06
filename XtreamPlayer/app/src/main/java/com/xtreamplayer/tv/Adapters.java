@@ -122,6 +122,17 @@ public final class Adapters {
             if (h == hot) return;
             hot = h;
             paint();
+            if (h && animate) { // highlight fades on rather than snapping
+                final android.graphics.drawable.Drawable bg = getBackground();
+                android.animation.ValueAnimator va = android.animation.ValueAnimator.ofInt(60, 255);
+                va.setDuration(160);
+                va.addUpdateListener(new android.animation.ValueAnimator.AnimatorUpdateListener() {
+                    public void onAnimationUpdate(android.animation.ValueAnimator v) {
+                        if (getBackground() == bg) bg.setAlpha((Integer) v.getAnimatedValue());
+                    }
+                });
+                va.start();
+            }
         }
 
         private void paint() {
