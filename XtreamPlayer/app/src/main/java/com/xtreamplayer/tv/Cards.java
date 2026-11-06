@@ -172,6 +172,45 @@ public final class Cards {
         return box;
     }
 
+    /**
+     * Shelf title followed by a small hint with the remote's Menu (three lines) button drawn in,
+     * e.g. "Continue Watching    ☰ to remove from list".
+     */
+    public static CharSequence titleWithMenuHint(Context c, String title, String hint) {
+        String gap = "      ";
+        android.text.SpannableStringBuilder b = new android.text.SpannableStringBuilder(title).append(gap);
+        int start = b.length();
+        b.append("\u2630").append("  ").append(hint);
+        int end = b.length();
+        float scale = 15f / 22f;
+        b.setSpan(new android.text.style.RelativeSizeSpan(scale), start, end, 0);
+        b.setSpan(new android.text.style.ForegroundColorSpan(Ui.TEXT3), start, end, 0);
+        b.setSpan(new android.text.style.TypefaceSpan("sans-serif"), start, end, 0);
+        int gw = Math.round(Ui.sp(c, 14)), gh = Math.round(Ui.sp(c, 11)); // about the height of the hint's capitals
+        android.graphics.drawable.Drawable d = new MenuGlyph(Ui.TEXT3);
+        d.setBounds(0, 0, gw, gh);
+        b.setSpan(new android.text.style.ImageSpan(d, android.text.style.DynamicDrawableSpan.ALIGN_BASELINE),
+                start, start + 1, 0);
+        return b;
+    }
+
+    /** The remote's Menu button: three short rounded lines. */
+    static final class MenuGlyph extends android.graphics.drawable.Drawable {
+        private final android.graphics.Paint paint = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+        MenuGlyph(int color) { paint.setColor(color); }
+        @Override public void draw(android.graphics.Canvas cv) {
+            android.graphics.Rect r = getBounds();
+            float w = r.width(), h = r.height(), t = Math.max(2f, h * 0.14f), rad = t / 2f;
+            for (int i = 0; i < 3; i++) {
+                float y = r.top + t / 2f + (h - t) * 0.5f * i - t / 2f;
+                cv.drawRoundRect(new android.graphics.RectF(r.left, y, r.left + w, y + t), rad, rad, paint);
+            }
+        }
+        @Override public void setAlpha(int a) { paint.setAlpha(a); }
+        @Override public void setColorFilter(android.graphics.ColorFilter f) { paint.setColorFilter(f); }
+        @Override public int getOpacity() { return android.graphics.PixelFormat.TRANSLUCENT; }
+    }
+
     static String initials(String s) {
         if (s == null) return "";
         s = s.replaceAll("[^\\p{L}\\p{N} ]", " ").trim();

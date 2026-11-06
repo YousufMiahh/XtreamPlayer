@@ -183,6 +183,29 @@ public class HomeActivity extends Activity {
         }
     };
 
+    /** Menu (☰) on a Continue Watching card: ask, then take it off the list. */
+    private final Cards.OnMenu removeMenu = new Cards.OnMenu() {
+        public void menu(final Item it, final View card) {
+            String name = Item.EPISODE.equals(it.type) && it.parentName != null && !it.parentName.isEmpty()
+                    ? it.parentName + " · " + it.name : it.name;
+            android.app.AlertDialog d = new android.app.AlertDialog.Builder(HomeActivity.this,
+                    Ui.DARK ? android.R.style.Theme_Material_Dialog_Alert : android.R.style.Theme_Material_Light_Dialog_Alert)
+                    .setTitle("Remove from Continue Watching?")
+                    .setMessage(name)
+                    .setPositiveButton("Remove", new android.content.DialogInterface.OnClickListener() {
+                        public void onClick(android.content.DialogInterface di, int w) {
+                            prefs.setPosition(it, 0); // no resume point = off the list
+                            refreshKeepingPlace(card);
+                        }
+                    })
+                    .setNegativeButton("Cancel", null)
+                    .create();
+            d.show();
+            android.widget.Button cancel = d.getButton(android.content.DialogInterface.BUTTON_NEGATIVE);
+            if (cancel != null) cancel.requestFocus(); // a stray OK won't remove anything
+        }
+    };
+
     /** Rebuild the rows straight away (e.g. a favourite was removed) and keep focus near where it was. */
     private void refreshKeepingPlace(View card) {
         String shelfTitle = null;
@@ -220,7 +243,12 @@ public class HomeActivity extends Activity {
 
     private void buildLocalRows() {
         localRows.removeAllViews();
-        add(localRows, "Continue Watching", prefs.continueWatching(), Cards.Shape.LANDSCAPE);
+        List<Item> cw = prefs.continueWatching();
+        if (!cw.isEmpty()) {
+            LinearLayout shelf = Cards.shelf(this, "Continue Watching", cw, Cards.Shape.LANDSCAPE, prefs, pick, removeMenu);
+            ((TextView) shelf.getChildAt(0)).setText(Cards.titleWithMenuHint(this, "Continue Watching", "to remove from list"));
+            localRows.addView(shelf);
+        }
         add(localRows, "Recent Channels", limit(prefs.history(true), 20), Cards.Shape.CHANNEL);
         add(localRows, "Favourite Channels", prefs.favs(Item.LIVE), Cards.Shape.CHANNEL);
         add(localRows, "Favourite Movies", prefs.favs(Item.MOVIE), Cards.Shape.POSTER);
