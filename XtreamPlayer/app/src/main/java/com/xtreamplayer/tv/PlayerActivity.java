@@ -609,7 +609,7 @@ public class PlayerActivity extends Activity implements Engine.Listener {
         final Item it = current();
         final int at = index;
         liveNum.setText(it.num == null ? "" : it.num);
-        liveName.setText(it.name + (prefs.isFav(it) ? "  ★" : ""));
+        liveName.setText(it.name + (prefs.isFav(it) ? "  ♥" : ""));
         liveNow.setText("");
         liveTime.setText("");
         liveNext.setText("");
@@ -686,11 +686,22 @@ public class PlayerActivity extends Activity implements Engine.Listener {
         if (engine == null) return;
 
         final Item cur = current();
-        if (!Item.EPISODE.equals(cur.type)) {
+        // Episodes add their series to Favourites
+        Item favTarget = cur;
+        if (Item.EPISODE.equals(cur.type)) {
+            favTarget = null;
+            if (cur.parentId != null) {
+                favTarget = new Item(Item.SERIES, cur.parentId, cur.parentName == null ? "" : cur.parentName);
+                favTarget.icon = cur.parentIcon;
+            }
+        }
+        if (favTarget != null) {
+            final Item fav = favTarget;
+            String what = Item.EPISODE.equals(cur.type) ? "series " : "";
             header("Favourites");
-            option(prefs.isFav(cur) ? "★  In Favourites — remove" : "☆  Add to Favourites", false, new Runnable() {
+            option(prefs.isFav(fav) ? "♥  In Favourites — remove " + what.trim() : "♡  Add " + what + "to Favourites", false, new Runnable() {
                 public void run() {
-                    Open.toggleFav(PlayerActivity.this, prefs, cur);
+                    Open.toggleFav(PlayerActivity.this, prefs, fav);
                     if (isLive()) showBanner();
                 }
             });

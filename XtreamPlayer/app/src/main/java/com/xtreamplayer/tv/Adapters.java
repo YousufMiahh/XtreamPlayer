@@ -254,7 +254,7 @@ public final class Adapters {
         }
     }
 
-    /** Live channels: number · logo · name · ★ */
+    /** Live channels: number · logo · name · ♥ */
     public static class Channels extends ItemAdapter {
         private final Prefs prefs;
         public String playingId;
@@ -266,7 +266,7 @@ public final class Adapters {
             RowCell cell = v instanceof RowCell ? (RowCell) v : new RowCell(ctx, true, true);
             cell.glide = hasGlider(list);
             Item it = getItem(pos);
-            String trail = prefs.isFav(it) ? "★" : null;
+            String trail = prefs.isFav(it) ? "♥" : null;
             if (playingId != null && playingId.equals(it.id)) trail = "▶";
             cell.bind(it.num == null ? String.valueOf(pos + 1) : it.num, it.icon, it.name, null, trail);
             cell.setActive(playingId != null && playingId.equals(it.id));
@@ -291,7 +291,7 @@ public final class Adapters {
         public View getView(int pos, View v, ViewGroup parent) {
             PosterCell cell = v instanceof PosterCell ? (PosterCell) v : new PosterCell(ctx, w, h);
             Item it = getItem(pos);
-            cell.title.setText(prefs.isFav(it) ? "★ " + it.name : it.name);
+            cell.title.setText(prefs.isFav(it) ? "♥ " + it.name : it.name);
             ImageLoader.load(cell.img, it.icon, 300, 450);
             cell.setHot(isHot(pos), false);
             return cell;

@@ -143,7 +143,9 @@ public class LoginActivity extends Activity {
         qrImage.setScaleType(android.widget.ImageView.ScaleType.FIT_CENTER);
         int qs = Ui.dp(this, 250);
         qrBox.addView(qrImage, new FrameLayout.LayoutParams(qs, qs));
-        p.addView(qrBox);
+        LinearLayout.LayoutParams qblp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        qblp.gravity = Gravity.CENTER_HORIZONTAL;
+        p.addView(qrBox, qblp);
 
         qrUrl = Ui.text(this, "", 14, Ui.TEXT3);
         qrUrl.setGravity(Gravity.CENTER);

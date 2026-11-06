@@ -135,7 +135,8 @@ public final class Cards {
                 long pos = prefs.position(it), dur = prefs.duration(it);
                 if (dur > 0) progress = pos / (float) dur;
                 if (Item.EPISODE.equals(it.type)) {
-                    sub = it.parentName;
+                    String left = dur > 0 ? SeriesActivity.fmt(Math.max(0, dur - pos)) + " left" : null;
+                    sub = XtreamApi.joinNonEmpty(it.parentName, left);
                     if (img == null) img = it.parentIcon;
                 } else {
                     sub = dur > 0 ? SeriesActivity.fmt(Math.max(0, dur - pos)) + " left" : null;

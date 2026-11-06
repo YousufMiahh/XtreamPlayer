@@ -110,6 +110,7 @@ public class BrowseActivity extends Activity {
         head.addView(header, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, 0));
         head.addView(count);
         head.setPadding(Ui.dp(this, 8), Ui.dp(this, 4), 0, Ui.dp(this, 14));
+        head.setVisibility(View.GONE); // the highlighted category on the left already says where you are
         mid.addView(head);
 
         FrameLayout contentFrame = new FrameLayout(this);
@@ -222,7 +223,7 @@ public class BrowseActivity extends Activity {
 
         // Push the button to the bottom of the panel
         p.addView(new View(this), new LinearLayout.LayoutParams(1, 0, 1));
-        infoFav = Ui.button(this, "☆  Add to Favourites");
+        infoFav = Ui.button(this, "♡  Add to Favourites");
         infoFav.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, Ui.sp(this, 16));
         infoFav.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
@@ -399,7 +400,7 @@ public class BrowseActivity extends Activity {
         if (pos < 0) pos = 0;
         boolean has = pos < contentAdapter.getCount();
         infoFav.setVisibility(has ? View.VISIBLE : View.INVISIBLE);
-        if (has) infoFav.setText(prefs.isFav(contentAdapter.getItem(pos)) ? "★  In Favourites" : "☆  Add to Favourites");
+        if (has) infoFav.setText(prefs.isFav(contentAdapter.getItem(pos)) ? "♥  In Favourites" : "♡  Add to Favourites");
     }
 
     private void showChannelInfo(int pos) {
