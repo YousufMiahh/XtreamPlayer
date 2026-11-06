@@ -253,7 +253,7 @@ public class PlayerActivity extends Activity implements Engine.Listener {
         liveNext = Ui.oneLine(Ui.text(this, "", 17, Ui.W2));
         liveNext.setPadding(0, Ui.dp(this, 10), 0, 0);
         col.addView(liveNext);
-        TextView hint = Ui.text(this, "▲▼  Change channel      OK  Channel list      ☰  Subtitles & Audio", 14, Ui.W3);
+        TextView hint = Ui.text(this, "▲▼  Change channel      OK  Channel list      ☰  Favourite, subtitles & audio", 14, Ui.W3);
         hint.setPadding(0, Ui.dp(this, 18), 0, 0);
         col.addView(hint);
         liveBanner.addView(col, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
@@ -268,8 +268,11 @@ public class PlayerActivity extends Activity implements Engine.Listener {
         channelPanel.setPadding(p, p, p, p);
         channelPanel.setVisibility(View.GONE);
         TextView t = Ui.title(this, "Channels", 26);
-        t.setPadding(Ui.dp(this, 10), Ui.dp(this, 6), 0, Ui.dp(this, 14));
+        t.setPadding(Ui.dp(this, 10), Ui.dp(this, 6), 0, Ui.dp(this, 2));
         channelPanel.addView(t);
+        TextView th = Ui.text(this, "☰  Add or remove favourite", 14, Ui.TEXT2);
+        th.setPadding(Ui.dp(this, 10), 0, 0, Ui.dp(this, 14));
+        channelPanel.addView(th);
         channelList = new ListView(this);
         channelList.setDivider(null);
         channelList.setDividerHeight(Ui.dp(this, 2));
@@ -668,6 +671,17 @@ public class PlayerActivity extends Activity implements Engine.Listener {
         trackList.removeAllViews();
         View firstSelected = null;
         if (engine == null) return;
+
+        final Item cur = current();
+        if (!Item.EPISODE.equals(cur.type)) {
+            header("Favourites");
+            option(prefs.isFav(cur) ? "★  In Favourites — remove" : "☆  Add to Favourites", false, new Runnable() {
+                public void run() {
+                    Open.toggleFav(PlayerActivity.this, prefs, cur);
+                    if (isLive()) showBanner();
+                }
+            });
+        }
 
         header("Subtitles");
         boolean off = engine.subtitlesAreOff();

@@ -56,6 +56,7 @@ public class BrowseActivity extends Activity {
     private boolean resumed;
     private final Runnable pendingPreview = new Runnable() { public void run() { startPreview(); } };
     private TextView infoName, infoNowTitle, infoNowTime, infoDesc, infoNext;
+    private android.widget.Button infoFav;
     private FrameLayout infoProgress;
 
     private Item currentCat;
@@ -146,6 +147,12 @@ public class BrowseActivity extends Activity {
         spinner.setIndeterminateTintList(android.content.res.ColorStateList.valueOf(Ui.TEXT2));
         contentFrame.addView(spinner, new FrameLayout.LayoutParams(Ui.dp(this, 48), Ui.dp(this, 48), Gravity.CENTER));
         mid.addView(contentFrame, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
+        content.setId(View.generateViewId());
+        TextView favHint = Ui.oneLine(Ui.text(this, live
+                ? "Hold OK or press ☰ to add a channel to Favourites   ·   ▶ for the Favourites button"
+                : "Hold OK or press ☰ to add to Favourites", 14, Ui.TEXT3));
+        favHint.setPadding(Ui.dp(this, 8), Ui.dp(this, 10), 0, 0);
+        mid.addView(favHint);
         cols.addView(mid, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1));
 
         if (live) cols.addView(buildInfoPanel(), panelParams());
@@ -215,6 +222,20 @@ public class BrowseActivity extends Activity {
         infoNext = Ui.lines(Ui.medium(this, "", 17, Ui.TEXT2), 2);
         infoNext.setPadding(0, Ui.dp(this, 6), 0, 0);
         p.addView(infoNext);
+
+        // Push the button to the bottom of the panel
+        p.addView(new View(this), new LinearLayout.LayoutParams(1, 0, 1));
+        infoFav = Ui.button(this, "☆  Add to Favourites");
+        infoFav.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, Ui.sp(this, 16));
+        infoFav.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                int pos = content.getSelectedItemPosition();
+                toggleFav(pos);
+                updateFavButton();
+            }
+        });
+        infoFav.setNextFocusLeftId(content.getId());
+        p.addView(infoFav, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         return p;
     }
 
@@ -362,6 +383,16 @@ public class BrowseActivity extends Activity {
         } else {
             contentAdapter.notifyDataSetChanged();
         }
+        updateFavButton();
+    }
+
+    private void updateFavButton() {
+        if (infoFav == null) return;
+        int pos = content.getSelectedItemPosition();
+        if (pos < 0) pos = 0;
+        boolean has = pos < contentAdapter.getCount();
+        infoFav.setVisibility(has ? View.VISIBLE : View.INVISIBLE);
+        if (has) infoFav.setText(prefs.isFav(contentAdapter.getItem(pos)) ? "★  In Favourites" : "☆  Add to Favourites");
     }
 
     private void showChannelInfo(int pos) {
@@ -378,6 +409,7 @@ public class BrowseActivity extends Activity {
         }
         Item it = contentAdapter.getItem(pos);
         infoName.setText(it.name);
+        updateFavButton();
         infoNowTitle.setText("");
         infoNowTime.setText("");
         infoDesc.setText("");
