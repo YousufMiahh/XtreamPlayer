@@ -32,6 +32,11 @@ public final class TopBar {
             {SEARCH, "Search"}, {SETTINGS, "Settings"},
     };
 
+    /** Screens that do something when OK is pressed on their own tab (Search opens the keyboard). */
+    public interface Reselect {
+        void onTabReselected();
+    }
+
     static final String EXTRA_TAB = "focus_tab";
     private static final DecelerateInterpolator EASE = new DecelerateInterpolator(2f);
 
@@ -99,7 +104,13 @@ public final class TopBar {
             tab.setPadding(px, py, px, py);
             tab.setFocusable(true);
             tab.setOnClickListener(new View.OnClickListener() {
-                public void onClick(View v) { go(a, current, t[0], false); }
+                public void onClick(View v) {
+                    if (t[0].equals(current)) { // OK on the tab you're already on
+                        if (a instanceof Reselect) ((Reselect) a).onTabReselected();
+                        return;
+                    }
+                    go(a, current, t[0], false);
+                }
             });
             // Hovering a tab opens that section after a short pause (Settings still needs OK).
             final Runnable open = new Runnable() {

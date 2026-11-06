@@ -24,7 +24,7 @@ import java.util.Locale;
  * Fast because: the library comes from the on-device copy, each section shows as soon as it's
  * ready, names are pre-lower-cased, and matching runs off the UI thread.
  */
-public class SearchActivity extends Activity {
+public class SearchActivity extends Activity implements TopBar.Reselect {
     private static final String[] TYPES = {Item.LIVE, Item.MOVIE, Item.SERIES};
     private static final String[] TITLES = {"Channels", "Movies", "Series"};
     private static final int MAX = 40;
@@ -36,7 +36,7 @@ public class SearchActivity extends Activity {
     private TextView status;
     private final boolean[] ready = new boolean[3];
     private final int[] found = new int[3];
-    private int token;
+    private volatile int token;
     private final Runnable pending = new Runnable() { public void run() { search(); } };
 
     @Override
@@ -99,6 +99,28 @@ public class SearchActivity extends Activity {
         loadLibrary();
     }
 
+    /**
+     * Search has its own background workers (one for loading lists, one for matching) so it can
+     * never hold up Live TV, Movies or Series loading elsewhere in the app.
+     */
+    private static final java.util.concurrent.ExecutorService LOADER = lowPriority("search-load");
+    private static final java.util.concurrent.ExecutorService MATCHER = lowPriority("search-match");
+
+    private static java.util.concurrent.ExecutorService lowPriority(final String name) {
+        return java.util.concurrent.Executors.newSingleThreadExecutor(new java.util.concurrent.ThreadFactory() {
+            public Thread newThread(final Runnable r) {
+                Thread t = new Thread(new Runnable() {
+                    public void run() {
+                        android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND);
+                        r.run();
+                    }
+                }, name);
+                t.setDaemon(true);
+                return t;
+            }
+        });
+    }
+
     private void loadLibrary() {
         boolean all = true;
         for (int i = 0; i < 3; i++) {
@@ -109,7 +131,7 @@ public class SearchActivity extends Activity {
         for (int i = 0; i < 3; i++) {
             if (ready[i]) continue;
             final int slot = i;
-            Async.run(new Async.Work<List<Item>>() {
+            Async.runOn(LOADER, new Async.Work<List<Item>>() {
                 public List<Item> run() throws Exception { return Repo.streams(api, TYPES[slot], null); }
             }, new Async.Done<List<Item>>() {
                 public void done(List<Item> r, Exception e) {
@@ -153,17 +175,22 @@ public class SearchActivity extends Activity {
         if (q.length() < 2) return;
         final List<Item> all = Repo.cached(TYPES[slot], null);
         if (all == null) return;
-        Async.run(new Async.Work<List<Item>>() {
+        Async.runOn(MATCHER, new Async.Work<List<Item>>() {
             public List<Item> run() {
                 // Ignore punctuation, spaces and accents: "spiderman", "spider man" and "spiderm"
                 // all find "Spider-Man". Several words match in any order ("man spider").
-                String folded = Item.fold(q);
-                String qc = folded.replaceAll("[^\\p{L}\\p{N}]+", "");
+                if (t != token) return null; // you've typed more since: skip this one
+                String qc = Item.squash(q);
                 List<String> words = new ArrayList<>();
-                for (String w : folded.split("[^\\p{L}\\p{N}]+")) if (!w.isEmpty()) words.add(w);
+                for (String w : q.split("\\s+")) {
+                    String sw = Item.squash(w);
+                    if (!sw.isEmpty()) words.add(sw);
+                }
                 List<Item> starts = new ArrayList<>(), contains = new ArrayList<>();
                 if (qc.length() < 2 || words.isEmpty()) return starts;
+                int n = 0;
                 for (Item it : all) {
+                    if ((++n & 1023) == 0 && t != token) return null; // stop early if outdated
                     String c = it.compact();
                     boolean hit = c.contains(qc);
                     if (!hit && words.size() > 1) {
@@ -172,7 +199,7 @@ public class SearchActivity extends Activity {
                     }
                     if (!hit) continue;
                     // A title (or any word in it, e.g. after "UK:") starting with the search ranks first
-                    if (c.startsWith(qc) || it.spaced().contains(" " + words.get(0))) starts.add(it);
+                    if (c.startsWith(qc) || it.wordStartsWith(words.get(0))) starts.add(it);
                     else if (contains.size() < MAX) contains.add(it);
                     if (starts.size() >= MAX) break;
                 }
@@ -205,6 +232,14 @@ public class SearchActivity extends Activity {
     @Override
     public void onBackPressed() {
         TopBar.back(this);
+    }
+
+    /** OK on the Search tab: jump into the search box with the keyboard open. */
+    public void onTabReselected() {
+        box.requestFocus();
+        android.view.inputmethod.InputMethodManager imm =
+                (android.view.inputmethod.InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
+        if (imm != null) imm.showSoftInput(box, android.view.inputmethod.InputMethodManager.SHOW_FORCED);
     }
 
     @Override

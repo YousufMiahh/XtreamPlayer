@@ -17,7 +17,12 @@ public final class Async {
     public static final Handler MAIN = new Handler(Looper.getMainLooper());
 
     public static <T> void run(final Work<T> work, final Done<T> done) {
-        POOL.execute(new Runnable() {
+        runOn(POOL, work, done);
+    }
+
+    /** Same as run, but on a specific executor (e.g. search gets its own so it can't block screens). */
+    public static <T> void runOn(java.util.concurrent.Executor ex, final Work<T> work, final Done<T> done) {
+        ex.execute(new Runnable() {
             public void run() {
                 T r = null;
                 Exception ex = null;

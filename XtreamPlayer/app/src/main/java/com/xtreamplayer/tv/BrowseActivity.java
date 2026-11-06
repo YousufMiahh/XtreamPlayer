@@ -505,10 +505,15 @@ public class BrowseActivity extends Activity {
     }
 
     private void backToCategories() {
-        catList.requestFocus();
-        if (catAdapter.active >= 0 && catAdapter.active < catAdapter.getCount()) {
-            catList.setSelection(catAdapter.active);
+        int a = catAdapter.active;
+        if (a >= 0 && a < catAdapter.getCount()) {
+            // Select the current category exactly where it sits on screen (setSelection alone
+            // scrolls it to the top of the list).
+            View row = catList.getChildAt(a - catList.getFirstVisiblePosition());
+            int top = row != null ? row.getTop() : catList.getPaddingTop();
+            catList.setSelectionFromTop(a, top);
         }
+        catList.requestFocus();
         Adapters.refresh(catList);
     }
 

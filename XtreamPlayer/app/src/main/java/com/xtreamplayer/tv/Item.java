@@ -26,7 +26,7 @@ public class Item {
     /** Episode running time, kept separately so the resume note can be rebuilt. */
     public String duration;
 
-    private String lower, compact, spaced;
+    private String lower, compact;
 
     /** Lower-cased name, computed once (makes searching big libraries fast). */
     public String lower() {
@@ -36,20 +36,51 @@ public class Item {
 
     /** Name with accents, punctuation and spaces removed: "Spider-Man: Homecoming" → "spidermanhomecoming". */
     public String compact() {
-        if (compact == null) compact = fold(name).replaceAll("[^\\p{L}\\p{N}]+", "");
+        if (compact == null) compact = squash(name);
         return compact;
     }
 
-    /** Name as words separated by single spaces, with a leading space: " spider man homecoming". */
-    public String spaced() {
-        if (spaced == null) spaced = " " + fold(name).replaceAll("[^\\p{L}\\p{N}]+", " ").trim();
-        return spaced;
+    /** True if some word in the name starts with this (already squashed) text, e.g. "spider" in "UK: Spider-Man". */
+    public boolean wordStartsWith(String q) {
+        String n = name;
+        boolean atStart = true;
+        for (int i = 0; i < n.length(); i++) {
+            char ch = n.charAt(i);
+            boolean alnum = Character.isLetterOrDigit(ch);
+            if (alnum && atStart && squash(n.substring(i)).startsWith(q)) return true;
+            atStart = !alnum;
+        }
+        return false;
     }
 
-    /** Lower-case and strip accents (é → e). */
+    /**
+     * Lower-case, drop accents and keep only letters and digits. Written as a plain loop
+     * (no regular expressions) so searching tens of thousands of titles stays quick.
+     */
+    public static String squash(String s) {
+        StringBuilder b = new StringBuilder(s.length());
+        boolean ascii = true;
+        for (int i = 0; i < s.length(); i++) {
+            char ch = s.charAt(i);
+            if (ch > 127) { ascii = false; break; }
+        }
+        String src = ascii ? s : java.text.Normalizer.normalize(s, java.text.Normalizer.Form.NFD);
+        for (int i = 0; i < src.length(); i++) {
+            char ch = src.charAt(i);
+            if (Character.isLetterOrDigit(ch)) b.append(Character.toLowerCase(ch));
+        }
+        return b.toString();
+    }
+
+    /** Lower-case and strip accents (é → e); keeps spaces and punctuation. */
     public static String fold(String s) {
         String n = java.text.Normalizer.normalize(s.toLowerCase(java.util.Locale.UK), java.text.Normalizer.Form.NFD);
-        return n.replaceAll("\\p{M}+", "");
+        StringBuilder b = new StringBuilder(n.length());
+        for (int i = 0; i < n.length(); i++) {
+            char ch = n.charAt(i);
+            if (Character.getType(ch) != Character.NON_SPACING_MARK) b.append(ch);
+        }
+        return b.toString();
     }
 
     public Item() {}

@@ -17,7 +17,7 @@ public class Glider {
 
     private final View pill;
     private final AbsListView list;
-    private float y = -1, h;
+    private float y = -1;
     private int lastSel = -1;
     private boolean shown;
     private ValueAnimator anim;
@@ -48,15 +48,17 @@ public class Glider {
         if (!list.hasFocus() || ch == null) {
             if (shown) {
                 shown = false;
+                if (anim != null) anim.cancel();
                 pill.animate().alpha(0f).setDuration(140).start();
             }
             lastSel = -1;
             return;
         }
-        final float ty = list.getTop() + ch.getTop(), th = ch.getHeight();
-        final FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) pill.getLayoutParams();
-        lp.leftMargin = list.getLeft() + ch.getLeft();
-        lp.width = ch.getWidth();
+        // Already gliding to this row: let it finish (list refreshes during the glide used to cancel it)
+        if (sel == lastSel && anim != null && anim.isRunning()) return;
+
+        final float ty = list.getTop() + ch.getTop();
+        size(list.getLeft() + ch.getLeft(), ch.getWidth(), ch.getHeight());
         boolean glide = shown && sel != lastSel && y >= 0;
         lastSel = sel;
         if (anim != null) anim.cancel();
@@ -66,27 +68,41 @@ public class Glider {
             pill.animate().alpha(1f).setDuration(140).start();
         }
         if (!glide) {
-            apply(lp, ty, th);
+            move(ty);
             return;
         }
-        final float fy = y, fh = h;
+        final float fy = y;
         anim = ValueAnimator.ofFloat(0f, 1f);
-        anim.setDuration(200);
+        anim.setDuration(240);
         anim.setInterpolator(EASE);
         anim.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
             public void onAnimationUpdate(ValueAnimator v) {
-                float f = (Float) v.getAnimatedValue();
-                apply(lp, fy + (ty - fy) * f, fh + (th - fh) * f);
+                move(fy + (ty - fy) * (Float) v.getAnimatedValue()); // only moves; never re-lays out the list
+            }
+        });
+        anim.addListener(new android.animation.AnimatorListenerAdapter() {
+            private boolean cancelled;
+            @Override public void onAnimationCancel(android.animation.Animator x) { cancelled = true; }
+            @Override public void onAnimationEnd(android.animation.Animator x) {
+                // The list may have scrolled while we glided: settle on the row's final position.
+                if (!cancelled) list.post(new Runnable() { public void run() { update(); } });
             }
         });
         anim.start();
     }
 
-    private void apply(FrameLayout.LayoutParams lp, float ny, float nh) {
-        y = ny;
-        h = nh;
-        lp.height = Math.round(nh);
-        pill.setTranslationY(ny);
+    /** Size the highlight to the row (only touches layout when the size actually changes). */
+    private void size(int left, int width, int height) {
+        FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) pill.getLayoutParams();
+        if (lp.leftMargin == left && lp.width == width && lp.height == height) return;
+        lp.leftMargin = left;
+        lp.width = width;
+        lp.height = height;
         pill.setLayoutParams(lp);
+    }
+
+    private void move(float ny) {
+        y = ny;
+        pill.setTranslationY(ny);
     }
 }
