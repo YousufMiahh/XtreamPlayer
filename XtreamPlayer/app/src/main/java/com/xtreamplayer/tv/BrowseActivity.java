@@ -362,7 +362,7 @@ public class BrowseActivity extends Activity {
         count.setText(list.size() == 1 ? "1 item" : list.size() + " items");
         boolean fav = currentCat != null && FAV.equals(currentCat.id);
         emptyText.setText(list.isEmpty()
-                ? (fav ? "No favourites yet\nPress ☰ or hold OK on anything to add it." : "Nothing here yet")
+                ? (fav ? (Ui.hasMenuKey() ? "No favourites yet\nPress ☰ or hold OK on anything to add it." : "No favourites yet\nHold OK on anything to add it.") : "Nothing here yet")
                 : "");
         if (live) showChannelInfo(list.isEmpty() ? -1 : 0);
         if (focusContent && !list.isEmpty()) {

@@ -54,6 +54,27 @@ public final class Ui {
         MUTED = TEXT2; PANEL = SURFACE; CARD = SURFACE;
     }
 
+    private static Boolean menuKey;
+
+    /**
+     * Does this remote have a Menu (☰) button? Fire TV remotes do; many Android TV / Google TV
+     * remotes (e.g. Chromecast) don't. Without one, holding OK does the same job and the hints say so.
+     */
+    public static boolean hasMenuKey() {
+        if (menuKey == null) {
+            boolean has;
+            try {
+                has = android.view.KeyCharacterMap.deviceHasKey(android.view.KeyEvent.KEYCODE_MENU);
+            } catch (Throwable t) {
+                has = true;
+            }
+            // Fire TV always has it, whatever the check says
+            if (android.os.Build.MANUFACTURER != null && android.os.Build.MANUFACTURER.equalsIgnoreCase("Amazon")) has = true;
+            menuKey = has;
+        }
+        return menuKey;
+    }
+
     private static Typeface regular, medium, semibold, bold;
 
     public static void init(Context c) {

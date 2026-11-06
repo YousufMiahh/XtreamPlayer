@@ -30,7 +30,7 @@ import java.util.Locale;
  * Android's ExoPlayer (default) or VLC. In Automatic mode a live channel whose picture
  * freezes is switched to VLC on the spot and remembered for next time.
  * Movies/episodes: OK play/pause, ◀ back 5 s, ▶ forward 10 s, ▼ or ☰ subtitles & audio.
- * Live TV: ▲/▼ change channel, OK channel list, ☰ subtitles & audio.
+ * Live TV: ▲/▼ change channel, OK channel list, ☰ or hold OK favourite, subtitles & audio.
  */
 public class PlayerActivity extends Activity implements Engine.Listener {
     static final long BACK_MS = 5000, FORWARD_MS = 10000;
@@ -253,7 +253,8 @@ public class PlayerActivity extends Activity implements Engine.Listener {
         liveNext = Ui.oneLine(Ui.text(this, "", 17, Ui.W2));
         liveNext.setPadding(0, Ui.dp(this, 10), 0, 0);
         col.addView(liveNext);
-        TextView hint = Ui.text(this, "▲▼  Change channel      OK  Channel list      ☰  Favourite, subtitles & audio", 14, Ui.W3);
+        TextView hint = Ui.text(this, "▲▼  Change channel      OK  Channel list      "
+                + (Ui.hasMenuKey() ? "☰" : "Hold OK") + "  Favourite, subtitles & audio", 14, Ui.W3);
         hint.setPadding(0, Ui.dp(this, 18), 0, 0);
         col.addView(hint);
         liveBanner.addView(col, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
@@ -270,7 +271,7 @@ public class PlayerActivity extends Activity implements Engine.Listener {
         TextView t = Ui.title(this, "Channels", 26);
         t.setPadding(Ui.dp(this, 10), Ui.dp(this, 6), 0, Ui.dp(this, 2));
         channelPanel.addView(t);
-        TextView th = Ui.text(this, "☰  Add or remove favourite", 14, Ui.TEXT2);
+        TextView th = Ui.text(this, (Ui.hasMenuKey() ? "☰ or hold OK" : "Hold OK") + "  Add or remove favourite", 14, Ui.TEXT2);
         th.setPadding(Ui.dp(this, 10), 0, 0, Ui.dp(this, 14));
         channelPanel.addView(th);
         channelList = new ListView(this);
@@ -284,6 +285,14 @@ public class PlayerActivity extends Activity implements Engine.Listener {
         channelList.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             public void onItemSelected(AdapterView<?> a, View v, int pos, long id) { Adapters.refresh(channelList); }
             public void onNothingSelected(AdapterView<?> a) {}
+        });
+        channelList.setOnItemLongClickListener(new AdapterView.OnItemLongClickListener() {
+            public boolean onItemLongClick(AdapterView<?> a, View v, int pos, long id) {
+                if (pos < 0 || pos >= queue.size()) return false;
+                Open.toggleFav(PlayerActivity.this, prefs, queue.get(pos));
+                channelAdapter.notifyDataSetChanged();
+                return true;
+            }
         });
         channelList.setOnItemClickListener(new AdapterView.OnItemClickListener() {
             public void onItemClick(AdapterView<?> a, View v, int pos, long id) {
@@ -825,10 +834,31 @@ public class PlayerActivity extends Activity implements Engine.Listener {
 
     // ------------------------------------------------------------ remote control
 
+    /** Live TV: OK pressed and not yet released (tap opens channels, hold opens the menu). */
+    private boolean okDown, okHeld;
+
     @Override
     public boolean dispatchKeyEvent(KeyEvent e) {
-        if (engine == null || e.getAction() != KeyEvent.ACTION_DOWN) return super.dispatchKeyEvent(e);
         int k = e.getKeyCode();
+        boolean okKey = k == KeyEvent.KEYCODE_DPAD_CENTER || k == KeyEvent.KEYCODE_ENTER;
+        if (engine != null && okKey && isLive() && !panelOpen() && errorText.getVisibility() != View.VISIBLE) {
+            if (e.getAction() == KeyEvent.ACTION_DOWN) {
+                if (e.getRepeatCount() == 0) {
+                    okDown = true;
+                    okHeld = false;
+                } else if (okDown && !okHeld && e.getRepeatCount() >= 1 && e.getEventTime() - e.getDownTime() >= 450) {
+                    okHeld = true;
+                    openTracks(); // hold OK: favourite, subtitles & audio (for remotes without ☰)
+                }
+                return true;
+            }
+            if (e.getAction() == KeyEvent.ACTION_UP) {
+                if (okDown && !okHeld) openChannels();
+                okDown = okHeld = false;
+                return true;
+            }
+        }
+        if (engine == null || e.getAction() != KeyEvent.ACTION_DOWN) return super.dispatchKeyEvent(e);
         if (k == KeyEvent.KEYCODE_BACK) return super.dispatchKeyEvent(e);
 
         if (panelOpen()) {

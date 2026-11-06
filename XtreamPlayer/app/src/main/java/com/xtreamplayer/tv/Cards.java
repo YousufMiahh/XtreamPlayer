@@ -177,6 +177,15 @@ public final class Cards {
      * e.g. "Continue Watching    ☰ to remove from list".
      */
     public static CharSequence titleWithMenuHint(Context c, String title, String hint) {
+        if (!Ui.hasMenuKey()) { // no ☰ on this remote: "Hold OK to remove from list"
+            android.text.SpannableStringBuilder b = new android.text.SpannableStringBuilder(title).append("      ");
+            int start = b.length();
+            b.append("Hold OK ").append(hint);
+            b.setSpan(new android.text.style.RelativeSizeSpan(15f / 22f), start, b.length(), 0);
+            b.setSpan(new android.text.style.ForegroundColorSpan(Ui.TEXT3), start, b.length(), 0);
+            b.setSpan(new android.text.style.TypefaceSpan("sans-serif"), start, b.length(), 0);
+            return b;
+        }
         String gap = "      ";
         android.text.SpannableStringBuilder b = new android.text.SpannableStringBuilder(title).append(gap);
         int start = b.length();
