@@ -1,6 +1,5 @@
 package com.xtreamplayer.tv;
 
-import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.content.Context;
 import android.graphics.Canvas;
@@ -18,35 +17,22 @@ import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ListView;
+import android.widget.ProgressBar;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import androidx.media3.common.C;
-import androidx.media3.common.Format;
-import androidx.media3.common.PlaybackException;
-import androidx.media3.common.Player;
-import androidx.media3.common.TrackSelectionOverride;
-import androidx.media3.common.TrackSelectionParameters;
-import androidx.media3.common.Tracks;
-import androidx.media3.exoplayer.DecoderCounters;
-import androidx.media3.exoplayer.ExoPlayer;
-import androidx.media3.ui.CaptionStyleCompat;
-import androidx.media3.ui.PlayerView;
-import androidx.media3.ui.SubtitleView;
-
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
 /**
- * Full-screen player with its own tvOS-style overlay.
+ * Full-screen player with its own tvOS-style overlay, running on either engine:
+ * Android's ExoPlayer (default) or VLC. In Automatic mode a live channel whose picture
+ * freezes is switched to VLC on the spot and remembered for next time.
  * Movies/episodes: OK play/pause, ◀ back 5 s, ▶ forward 10 s, ▼ or ☰ subtitles & audio.
  * Live TV: ▲/▼ change channel, OK channel list, ☰ subtitles & audio.
- * A watchdog spots frozen video (audio still playing) and re-syncs the stream.
  */
-@SuppressLint("UnsafeOptInUsageError")
-public class PlayerActivity extends Activity {
+public class PlayerActivity extends Activity implements Engine.Listener {
     static final long BACK_MS = 5000, FORWARD_MS = 10000;
     static final float[] SUB_SIZES = {0.045f, 0.056f, 0.068f, 0.085f};
     static final String[] SUB_COLOR_NAMES = {"White", "Yellow", "Cyan", "Green", "Pink", "Orange"};
@@ -59,8 +45,10 @@ public class PlayerActivity extends Activity {
     private List<Item> queue;
     private int index;
 
-    private ExoPlayer player;
-    private PlayerView view;
+    private Engine engine;
+    private boolean usingVlc;
+    private FrameLayout videoHost;
+    private ProgressBar spinner;
 
     // VOD overlay
     private LinearLayout vodOverlay;
@@ -84,7 +72,7 @@ public class PlayerActivity extends Activity {
     // State
     private String liveFormat;
     private int retries;
-    private boolean triedAltFormat;
+    private boolean triedAltFormat, triedVlc;
     private boolean firstStart = true;
     private long seekTarget = -1, burst;
     private int lastRendered = -1, stallTicks, recoveries;
@@ -130,11 +118,14 @@ public class PlayerActivity extends Activity {
 
         FrameLayout root = new FrameLayout(this);
         root.setBackgroundColor(Color.BLACK);
-        view = new PlayerView(this);
-        view.setUseController(false);
-        view.setShowBuffering(PlayerView.SHOW_BUFFERING_ALWAYS);
-        view.setFocusable(true);
-        root.addView(view, match());
+        videoHost = new FrameLayout(this);
+        videoHost.setFocusable(true);
+        root.addView(videoHost, match());
+
+        spinner = new ProgressBar(this);
+        spinner.setIndeterminateTintList(android.content.res.ColorStateList.valueOf(Ui.W2));
+        spinner.setVisibility(View.GONE);
+        root.addView(spinner, new FrameLayout.LayoutParams(Ui.dp(this, 64), Ui.dp(this, 64), Gravity.CENTER));
 
         buildVodOverlay(root);
         buildLiveBanner(root);
@@ -158,7 +149,7 @@ public class PlayerActivity extends Activity {
         root.addView(statusPill, sp);
 
         setContentView(root);
-        view.requestFocus();
+        videoHost.requestFocus();
     }
 
     private FrameLayout.LayoutParams match() {
@@ -326,8 +317,8 @@ public class PlayerActivity extends Activity {
     @Override
     protected void onStart() {
         super.onStart();
-        if (view == null) return;
-        initPlayer();
+        if (videoHost == null) return;
+        startEngine(wantsVlc(current()));
         play(true);
         firstStart = false;
         Async.MAIN.post(ticker);
@@ -340,7 +331,7 @@ public class PlayerActivity extends Activity {
         Async.MAIN.removeCallbacks(watchdog);
         Async.MAIN.removeCallbacks(zapPlay);
         savePosition();
-        releasePlayer();
+        releaseEngine();
         super.onStop();
     }
 
@@ -351,115 +342,52 @@ public class PlayerActivity extends Activity {
         super.onDestroy();
     }
 
-    private void initPlayer() {
-        player = PlayerFactory.create(this, prefs);
+    // ------------------------------------------------------------ engines
 
-        TrackSelectionParameters.Builder tb = player.getTrackSelectionParameters().buildUpon();
-        String sl = prefs.subtitleLanguage();
-        if ("off".equals(sl)) tb.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true);
-        else if (!sl.isEmpty()) tb.setPreferredTextLanguage(sl);
-        if (!prefs.audioLanguage().isEmpty()) tb.setPreferredAudioLanguage(prefs.audioLanguage());
-        player.setTrackSelectionParameters(tb.build());
-
-        player.addListener(new Player.Listener() {
-            @Override
-            public void onPlaybackStateChanged(int state) {
-                if (state == Player.STATE_READY) {
-                    retries = 0;
-                    errorText.setVisibility(View.GONE);
-                } else if (state == Player.STATE_ENDED) {
-                    onEnded();
-                }
-            }
-
-            @Override
-            public void onIsPlayingChanged(boolean playing) {
-                centerIcon.setPaused(!playing);
-                if (!isLive()) {
-                    if (!playing && player != null && player.getPlaybackState() == Player.STATE_READY) {
-                        centerIcon.setVisibility(View.VISIBLE);
-                        showOverlay(false);
-                    } else {
-                        centerIcon.setVisibility(View.GONE);
-                        if (playing && vodOverlay.getVisibility() == View.VISIBLE) {
-                            Async.MAIN.removeCallbacks(hideOverlay);
-                            Async.MAIN.postDelayed(hideOverlay, 4000);
-                        }
-                    }
-                }
-            }
-
-            @Override
-            public void onTracksChanged(Tracks tracks) {
-                if (trackPanel.getVisibility() == View.VISIBLE) buildTrackRows(false);
-            }
-
-            @Override
-            public void onPlayerError(PlaybackException error) { handleError(error); }
-        });
-        view.setPlayer(player);
-        styleSubtitles();
+    /** Settings → Video Player: 0 Automatic, 1 Android player, 2 VLC. */
+    private boolean wantsVlc(Item it) {
+        int mode = prefs.engineMode();
+        if (mode == 2) return true;
+        if (mode == 1) return false;
+        return prefs.prefersVlc(it); // Automatic: channels/videos that froze before
     }
 
-    private void styleSubtitles() {
-        SubtitleView sv = view.getSubtitleView();
-        if (sv == null) return;
-        sv.setApplyEmbeddedStyles(false);
-        sv.setApplyEmbeddedFontSizes(false);
-        boolean bg = prefs.subtitleBackground();
-        int bgColor = bg ? (SUB_OPACITY_ALPHA[prefs.subtitleOpacity()] << 24) : Color.TRANSPARENT;
-        sv.setStyle(new CaptionStyleCompat(SUB_COLORS[prefs.subtitleColor()], bgColor, Color.TRANSPARENT,
-                bg ? CaptionStyleCompat.EDGE_TYPE_NONE : CaptionStyleCompat.EDGE_TYPE_DROP_SHADOW, 0xE6000000, Ui.semibold()));
-        sv.setFractionalTextSize(SUB_SIZES[Math.max(0, Math.min(SUB_SIZES.length - 1, prefs.subtitleSize()))]);
-        sv.setBottomPaddingFraction(0.07f);
-    }
-
-    private void releasePlayer() {
-        if (player != null) {
-            view.setPlayer(null);
-            player.release();
-            player = null;
+    private void startEngine(boolean vlc) {
+        releaseEngine();
+        try {
+            engine = vlc ? new VlcEngine(this, prefs, this) : new ExoEngine(this, prefs, this);
+            usingVlc = vlc;
+        } catch (Throwable t) { // VLC not available on this device: fall back
+            engine = new ExoEngine(this, prefs, this);
+            usingVlc = false;
         }
+        videoHost.addView(engine.view(), 0, match());
     }
 
-    private Item current() { return queue.get(index); }
+    private void releaseEngine() {
+        if (engine == null) return;
+        videoHost.removeView(engine.view());
+        engine.release();
+        engine = null;
+        spinner.setVisibility(View.GONE);
+    }
 
-    private boolean isLive() { return Item.LIVE.equals(current().type); }
+    /** Swap engines mid-playback, keeping the position for movies. */
+    private void switchEngine(boolean vlc, String why) {
+        long pos = isLive() || engine == null ? 0 : engine.position();
+        startEngine(vlc);
+        status(why);
+        load(pos);
+    }
 
-    // ------------------------------------------------------------ playback
+    // Engine.Listener
 
-    private void play(boolean resume) {
-        if (player == null) return;
-        Item it = current();
+    public void onReady() {
+        retries = 0;
         errorText.setVisibility(View.GONE);
-        lastRendered = -1;
-        stallTicks = 0;
-        String url = api.playUrl(it, liveFormat);
-        player.setMediaItem(PlayerFactory.media(url));
-        if (!isLive() && resume) {
-            long pos = prefs.position(it);
-            if (pos > 10000) {
-                player.seekTo(pos);
-                if (firstStart) Toast.makeText(this, "Resuming from " + SeriesActivity.fmt(pos), Toast.LENGTH_SHORT).show();
-            }
-        }
-        player.prepare();
-        player.setPlayWhenReady(true);
-        prefs.addHistory(it);
-        if (isLive()) {
-            fade(vodOverlay, false);
-            showBanner();
-        } else {
-            fade(liveBanner, false);
-            vodTitle.setText(it.name);
-            vodSub.setText(Item.EPISODE.equals(it.type)
-                    ? XtreamApi.joinNonEmpty(it.parentName, "Episode " + it.num) : "");
-            vodSub.setVisibility(Item.EPISODE.equals(it.type) ? View.VISIBLE : View.GONE);
-            showOverlay(true);
-        }
     }
 
-    private void onEnded() {
+    public void onEnded() {
         if (isLive()) { // server dropped the stream: reconnect
             play(false);
             return;
@@ -474,18 +402,40 @@ public class PlayerActivity extends Activity {
         }
     }
 
-    private void handleError(PlaybackException e) {
-        if (player == null) return;
-        if (e.errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW) {
-            player.seekToDefaultPosition();
-            player.prepare();
+    public void onPlayingChanged(boolean playing) {
+        centerIcon.setPaused(!playing);
+        if (isLive()) return;
+        if (!playing && engine != null && engine.isReady()) {
+            centerIcon.setVisibility(View.VISIBLE);
+            showOverlay(false);
+        } else {
+            centerIcon.setVisibility(View.GONE);
+            if (playing && vodOverlay.getVisibility() == View.VISIBLE) {
+                Async.MAIN.removeCallbacks(hideOverlay);
+                Async.MAIN.postDelayed(hideOverlay, 4000);
+            }
+        }
+    }
+
+    public void onBuffering(boolean buffering) {
+        spinner.setVisibility(buffering ? View.VISIBLE : View.GONE);
+    }
+
+    public void onTracksChanged() {
+        if (trackPanel.getVisibility() == View.VISIBLE) buildTrackRows(false);
+    }
+
+    public void onError(String what, boolean behindLiveWindow) {
+        if (engine == null) return;
+        if (behindLiveWindow) {
+            engine.retry(true);
             return;
         }
         if (retries < 2) {
             retries++;
             status("Reconnecting…");
             Async.MAIN.postDelayed(new Runnable() {
-                public void run() { if (player != null) player.prepare(); }
+                public void run() { if (engine != null) engine.retry(false); }
             }, 1500);
             return;
         }
@@ -493,17 +443,66 @@ public class PlayerActivity extends Activity {
             triedAltFormat = true;
             retries = 0;
             liveFormat = "ts".equals(liveFormat) ? "m3u8" : "ts";
-            play(false);
+            load(0);
             return;
         }
-        errorText.setText("Can't play this " + (isLive() ? "channel" : "video") + "\n" + e.getErrorCodeName()
+        if (!usingVlc && !triedVlc && prefs.engineMode() == 0) { // last resort: the other engine
+            triedVlc = true;
+            retries = 0;
+            liveFormat = prefs.liveFormat();
+            switchEngine(true, "Trying VLC player…");
+            return;
+        }
+        errorText.setText("Can't play this " + (isLive() ? "channel" : "video") + "\n" + what
                 + "\n\nOK  Try again      Back  Exit" + (isLive() ? "      ▲▼  Other channel" : ""));
         errorText.setVisibility(View.VISIBLE);
+        spinner.setVisibility(View.GONE);
+    }
+
+    private Item current() { return queue.get(index); }
+
+    private boolean isLive() { return Item.LIVE.equals(current().type); }
+
+    // ------------------------------------------------------------ playback
+
+    private void play(boolean resume) {
+        if (videoHost == null) return;
+        Item it = current();
+        boolean vlc = wantsVlc(it);
+        if (engine == null || vlc != usingVlc) startEngine(vlc);
+        long start = 0;
+        if (!isLive() && resume) {
+            long pos = prefs.position(it);
+            if (pos > 10000) {
+                start = pos;
+                if (firstStart) Toast.makeText(this, "Resuming from " + SeriesActivity.fmt(pos), Toast.LENGTH_SHORT).show();
+            }
+        }
+        load(start);
+        prefs.addHistory(it);
+        if (isLive()) {
+            fade(vodOverlay, false);
+            showBanner();
+        } else {
+            fade(liveBanner, false);
+            vodTitle.setText(it.name);
+            vodSub.setText(Item.EPISODE.equals(it.type)
+                    ? XtreamApi.joinNonEmpty(it.parentName, "Episode " + it.num) : "");
+            vodSub.setVisibility(Item.EPISODE.equals(it.type) ? View.VISIBLE : View.GONE);
+            showOverlay(true);
+        }
+    }
+
+    private void load(long startMs) {
+        errorText.setVisibility(View.GONE);
+        lastRendered = -1;
+        stallTicks = 0;
+        engine.load(api.playUrl(current(), liveFormat), startMs);
     }
 
     private void savePosition() {
-        if (player == null || queue == null || isLive()) return;
-        long d = player.getDuration(), p = player.getCurrentPosition();
+        if (engine == null || queue == null || isLive()) return;
+        long d = engine.duration(), p = engine.position();
         if (d > 0) prefs.setDuration(current(), d);
         if (d > 0 && p > d - 60000) prefs.setPosition(current(), 0);
         else if (p > 10000) prefs.setPosition(current(), p);
@@ -512,37 +511,41 @@ public class PlayerActivity extends Activity {
     private void resetLiveState() {
         retries = 0;
         triedAltFormat = false;
+        triedVlc = false;
         recoveries = 0;
         liveFormat = prefs.liveFormat();
     }
 
-    /** Frozen-picture detector: playing, but no new video frames for 4 s → re-sync. */
+    /**
+     * Frozen-picture detector: playing, but no new video frames for 3 s.
+     * Automatic mode moves the stream to VLC (and remembers it); otherwise it reconnects.
+     */
     private void checkStall() {
-        if (player == null || !prefs.autoRecover() || !player.isPlaying()) {
+        if (engine == null || !prefs.autoRecover() || !engine.isPlaying()) {
             stallTicks = 0;
             return;
         }
-        Format vf = player.getVideoFormat();
-        DecoderCounters dc = player.getVideoDecoderCounters();
-        if (vf == null || dc == null) return;
-        if (vf.frameRate > 0 && vf.frameRate < 5) return; // radio stations with a still picture
-        dc.ensureUpdated();
-        int r = dc.renderedOutputBufferCount;
+        float fps = engine.frameRate();
+        int r = engine.framesRendered();
+        if (r < 0 || fps < 0) return;          // engine can't tell, or no video (radio)
+        if (fps > 0 && fps < 5) return;        // still-picture channels
         if (r != lastRendered) {
             lastRendered = r;
             stallTicks = 0;
             return;
         }
-        if (++stallTicks < 4) return;
+        if (++stallTicks < 3) return;
         stallTicks = 0;
+        if (prefs.engineMode() == 0 && !usingVlc) {
+            prefs.setPrefersVlc(current(), true);
+            switchEngine(true, "Picture froze — switching to VLC player");
+            return;
+        }
         if (recoveries >= 4) return; // give up quietly rather than loop forever
         recoveries++;
         status("Re-syncing video…");
-        if (isLive()) {
-            play(false);
-        } else {
-            player.seekTo(player.getCurrentPosition());
-        }
+        if (isLive()) load(0);
+        else engine.seekTo(engine.position());
     }
 
     // ------------------------------------------------------------ overlays
@@ -566,20 +569,20 @@ public class PlayerActivity extends Activity {
         updateProgress();
         fade(vodOverlay, true);
         Async.MAIN.removeCallbacks(hideOverlay);
-        if (autoHide && player != null && player.isPlaying()) Async.MAIN.postDelayed(hideOverlay, 4000);
+        if (autoHide && engine != null && engine.isPlaying()) Async.MAIN.postDelayed(hideOverlay, 4000);
     }
 
     private void updateProgress() {
-        if (player == null || vodOverlay.getVisibility() != View.VISIBLE) return;
-        long d = player.getDuration();
-        long p = seekTarget >= 0 ? seekTarget : player.getCurrentPosition();
+        if (engine == null || vodOverlay.getVisibility() != View.VISIBLE) return;
+        long d = engine.duration();
+        long p = seekTarget >= 0 ? seekTarget : engine.position();
         if (d <= 0) {
             vodBar.set(0, 0);
             timeLeft.setText(SeriesActivity.fmt(p));
             timeRight.setText("");
             return;
         }
-        vodBar.set(p / (float) d, player.getBufferedPosition() / (float) d);
+        vodBar.set(p / (float) d, engine.buffered() / (float) d);
         timeLeft.setText(SeriesActivity.fmt(p));
         timeRight.setText("−" + SeriesActivity.fmt(Math.max(0, d - p)));
     }
@@ -636,7 +639,7 @@ public class PlayerActivity extends Activity {
     private void hidePanels() {
         fade(channelPanel, false);
         fade(trackPanel, false);
-        view.requestFocus();
+        videoHost.requestFocus();
     }
 
     private void openChannels() {
@@ -648,7 +651,7 @@ public class PlayerActivity extends Activity {
         channelList.setSelection(index);
     }
 
-    // ------------------------------------------------------------ subtitles & audio
+    // ------------------------------------------------------------ subtitles, audio & player
 
     private void openTracks() {
         fade(vodOverlay, false);
@@ -662,59 +665,41 @@ public class PlayerActivity extends Activity {
         int focusedIndex = focused != null && focused.getParent() == trackList ? trackList.indexOfChild(focused) : -1;
         trackList.removeAllViews();
         View firstSelected = null;
-        if (player == null) return;
-
-        TrackSelectionParameters params = player.getTrackSelectionParameters();
-        boolean textDisabled = params.disabledTrackTypes.contains(C.TRACK_TYPE_TEXT);
-        List<Tracks.Group> text = new ArrayList<>(), audio = new ArrayList<>();
-        boolean anyTextSelected = false;
-        for (Tracks.Group g : player.getCurrentTracks().getGroups()) {
-            if (g.getType() == C.TRACK_TYPE_TEXT) {
-                text.add(g);
-                if (g.isSelected()) anyTextSelected = true;
-            } else if (g.getType() == C.TRACK_TYPE_AUDIO) {
-                audio.add(g);
-            }
-        }
+        if (engine == null) return;
 
         header("Subtitles");
-        View off = option("Off", textDisabled || !anyTextSelected, new Runnable() {
+        boolean off = engine.subtitlesAreOff();
+        View offRow = option("Off", off, new Runnable() {
             public void run() {
-                player.setTrackSelectionParameters(player.getTrackSelectionParameters().buildUpon()
-                        .clearOverridesOfType(C.TRACK_TYPE_TEXT)
-                        .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true).build());
+                engine.subtitlesOff();
                 prefs.setSubtitleLanguage("off");
             }
         });
-        if (textDisabled || !anyTextSelected) firstSelected = off;
-        int n = 0;
-        for (final Tracks.Group g : text) {
-            for (int i = 0; i < g.length; i++) {
-                if (!g.isTrackSupported(i)) continue;
-                final int ti = i;
-                boolean sel = !textDisabled && g.isTrackSelected(i);
-                View o = option(trackName(g.getTrackFormat(i), C.TRACK_TYPE_TEXT, ++n), sel, new Runnable() {
-                    public void run() { select(g, ti, C.TRACK_TYPE_TEXT); }
-                });
-                if (sel) firstSelected = o;
-            }
+        if (off) firstSelected = offRow;
+        List<Engine.Track> text = engine.tracks(Engine.TEXT);
+        for (final Engine.Track t : text) {
+            View o = option(t.label, t.selected, new Runnable() {
+                public void run() {
+                    engine.select(t);
+                    prefs.setSubtitleLanguage(t.language == null ? "" : t.language);
+                }
+            });
+            if (t.selected) firstSelected = o;
         }
-        if (n == 0) note("This stream has no subtitles");
+        if (text.isEmpty()) note("This stream has no subtitles");
 
         header("Audio");
-        int a = 0;
-        for (final Tracks.Group g : audio) {
-            for (int i = 0; i < g.length; i++) {
-                if (!g.isTrackSupported(i)) continue;
-                final int ti = i;
-                boolean sel = g.isTrackSelected(i);
-                View o = option(trackName(g.getTrackFormat(i), C.TRACK_TYPE_AUDIO, ++a), sel, new Runnable() {
-                    public void run() { select(g, ti, C.TRACK_TYPE_AUDIO); }
-                });
-                if (sel && firstSelected == null) firstSelected = o;
-            }
+        List<Engine.Track> audio = engine.tracks(Engine.AUDIO);
+        for (final Engine.Track t : audio) {
+            View o = option(t.label, t.selected, new Runnable() {
+                public void run() {
+                    engine.select(t);
+                    prefs.setAudioLanguage(t.language == null ? "" : t.language);
+                }
+            });
+            if (t.selected && firstSelected == null) firstSelected = o;
         }
-        if (a == 0) note("No audio tracks found");
+        if (audio.isEmpty()) note("No audio tracks found");
 
         header("Subtitle Size");
         for (int s = 0; s < SettingsActivity.SUB_SIZES.length; s++) {
@@ -722,31 +707,36 @@ public class PlayerActivity extends Activity {
             option(SettingsActivity.SUB_SIZES[s], prefs.subtitleSize() == s, new Runnable() {
                 public void run() {
                     prefs.setSubtitleSize(size);
-                    styleSubtitles();
+                    engine.applySubtitleStyle();
                 }
             });
         }
+        if (usingVlc) note("With VLC, size changes apply from the next video");
+
+        header("Player");
+        option("Android player", !usingVlc, new Runnable() {
+            public void run() {
+                if (!usingVlc) return;
+                prefs.setPrefersVlc(current(), false);
+                hidePanels();
+                switchEngine(false, "Switched to Android player");
+            }
+        });
+        option("VLC player", usingVlc, new Runnable() {
+            public void run() {
+                if (usingVlc) return;
+                prefs.setPrefersVlc(current(), true);
+                hidePanels();
+                switchEngine(true, "Switched to VLC player");
+            }
+        });
+        note("Picture freezing? Try the other player — it's remembered for this " + (isLive() ? "channel." : "video."));
 
         if (focusedIndex >= 0 && focusedIndex < trackList.getChildCount() && trackList.getChildAt(focusedIndex).isFocusable()) {
             trackList.getChildAt(focusedIndex).requestFocus();
         } else if (focusSelected && firstSelected != null) {
             firstSelected.requestFocus();
         }
-    }
-
-    private void select(Tracks.Group g, int i, int type) {
-        String lang = g.getTrackFormat(i).language;
-        TrackSelectionParameters.Builder b = player.getTrackSelectionParameters().buildUpon()
-                .setTrackTypeDisabled(type, false)
-                .setOverrideForType(new TrackSelectionOverride(g.getMediaTrackGroup(), i));
-        if (type == C.TRACK_TYPE_TEXT) {
-            b.setPreferredTextLanguage(lang);
-            prefs.setSubtitleLanguage(lang == null ? "" : lang);
-        } else {
-            b.setPreferredAudioLanguage(lang);
-            prefs.setAudioLanguage(lang == null ? "" : lang);
-        }
-        player.setTrackSelectionParameters(b.build());
     }
 
     private void header(String s) {
@@ -791,40 +781,11 @@ public class PlayerActivity extends Activity {
         return r;
     }
 
-    static String trackName(Format f, int type, int n) {
-        String name;
-        if (f.label != null && !f.label.trim().isEmpty()) {
-            name = f.label.trim();
-        } else if (f.language != null && !f.language.isEmpty() && !"und".equals(f.language)) {
-            String d = new Locale(f.language).getDisplayLanguage(Locale.UK);
-            name = d == null || d.isEmpty() ? f.language : d;
-        } else {
-            name = (type == C.TRACK_TYPE_AUDIO ? "Audio " : "Subtitles ") + n;
-        }
-        List<String> extra = new ArrayList<>();
-        if (type == C.TRACK_TYPE_AUDIO) {
-            String m = f.sampleMimeType == null ? "" : f.sampleMimeType;
-            if (m.contains("eac3")) extra.add("Dolby Digital+");
-            else if (m.contains("ac3")) extra.add("Dolby Digital");
-            else if (m.contains("dts")) extra.add("DTS");
-            else if (m.contains("mp4a")) extra.add("AAC");
-            if (f.channelCount == 8) extra.add("7.1");
-            else if (f.channelCount == 6) extra.add("5.1");
-            else if (f.channelCount == 2) extra.add("Stereo");
-            else if (f.channelCount == 1) extra.add("Mono");
-        } else if ((f.selectionFlags & C.SELECTION_FLAG_FORCED) != 0) {
-            extra.add("Forced");
-        }
-        StringBuilder b = new StringBuilder(name);
-        for (String x : extra) b.append("  ·  ").append(x);
-        return b.toString();
-    }
-
     // ------------------------------------------------------------ remote control
 
     @Override
     public boolean dispatchKeyEvent(KeyEvent e) {
-        if (player == null || e.getAction() != KeyEvent.ACTION_DOWN) return super.dispatchKeyEvent(e);
+        if (engine == null || e.getAction() != KeyEvent.ACTION_DOWN) return super.dispatchKeyEvent(e);
         int k = e.getKeyCode();
         if (k == KeyEvent.KEYCODE_BACK) return super.dispatchKeyEvent(e);
 
@@ -872,7 +833,8 @@ public class PlayerActivity extends Activity {
                 case KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE:
                 case KeyEvent.KEYCODE_MEDIA_PLAY:
                 case KeyEvent.KEYCODE_MEDIA_PAUSE:
-                    player.setPlayWhenReady(!player.getPlayWhenReady());
+                    if (engine.isPlaying()) engine.pause();
+                    else engine.play();
                     return true;
                 default:
                     return super.dispatchKeyEvent(e);
@@ -887,11 +849,11 @@ public class PlayerActivity extends Activity {
                 togglePause();
                 return true;
             case KeyEvent.KEYCODE_MEDIA_PLAY:
-                player.play();
+                engine.play();
                 showOverlay(true);
                 return true;
             case KeyEvent.KEYCODE_MEDIA_PAUSE:
-                player.pause();
+                engine.pause();
                 return true;
             case KeyEvent.KEYCODE_DPAD_LEFT:
             case KeyEvent.KEYCODE_MEDIA_REWIND:
@@ -914,22 +876,22 @@ public class PlayerActivity extends Activity {
     }
 
     private void togglePause() {
-        if (player.isPlaying()) {
-            player.pause();
+        if (engine.isPlaying()) {
+            engine.pause();
         } else {
-            player.play();
+            engine.play();
             showOverlay(true);
         }
     }
 
     private void seekBy(long delta) {
-        long d = player.getDuration();
-        long base = seekTarget >= 0 ? seekTarget : player.getCurrentPosition();
+        long d = engine.duration();
+        long base = seekTarget >= 0 ? seekTarget : engine.position();
         long target = Math.max(0, base + delta);
         if (d > 0) target = Math.min(target, d - 1000);
         seekTarget = target;
         burst += delta;
-        player.seekTo(target);
+        engine.seekTo(target);
         long s = Math.abs(burst) / 1000;
         seekBubble.setText((burst < 0 ? "−" : "+") + (s >= 60 ? SeriesActivity.fmt(Math.abs(burst)) : s + " sec"));
         seekBubble.setVisibility(View.VISIBLE);
@@ -949,11 +911,11 @@ public class PlayerActivity extends Activity {
 
     @Override
     public void onBackPressed() {
-        if (view != null && panelOpen()) {
+        if (videoHost != null && panelOpen()) {
             hidePanels();
             return;
         }
-        if (view != null && player != null && !isLive() && vodOverlay.getVisibility() == View.VISIBLE && player.isPlaying()) {
+        if (engine != null && !isLive() && vodOverlay.getVisibility() == View.VISIBLE && engine.isPlaying()) {
             fade(vodOverlay, false);
             return;
         }

@@ -201,6 +201,26 @@ public class Prefs {
     public boolean autoRecover() { return sp.getBoolean("auto_recover", true); }
     public void setAutoRecover(boolean b) { sp.edit().putBoolean("auto_recover", b).apply(); }
 
+    /** 0 Automatic (Android player, VLC for streams that freeze), 1 Android player only, 2 VLC only. */
+    public int engineMode() { return Math.min(sp.getInt("engine", 0), 2); }
+    public void setEngineMode(int m) { sp.edit().putInt("engine", m).apply(); }
+
+    /** Channels/videos that froze on the Android player and now open in VLC (per account). */
+    public boolean prefersVlc(Item it) {
+        return sp.getStringSet(ns() + "vlc_items", new HashSet<String>()).contains(it.key());
+    }
+
+    public void setPrefersVlc(Item it, boolean vlc) {
+        Set<String> s = new HashSet<>(sp.getStringSet(ns() + "vlc_items", new HashSet<String>()));
+        if (vlc) s.add(it.key());
+        else s.remove(it.key());
+        sp.edit().putStringSet(ns() + "vlc_items", s).apply();
+    }
+
+    public int vlcItemCount() { return sp.getStringSet(ns() + "vlc_items", new HashSet<String>()).size(); }
+
+    public void clearVlcItems() { sp.edit().remove(ns() + "vlc_items").apply(); }
+
     public boolean darkTheme() { return sp.getBoolean("dark", true); }
     public void setDarkTheme(boolean b) { sp.edit().putBoolean("dark", b).apply(); }
 

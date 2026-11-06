@@ -133,6 +133,19 @@ public class SettingsActivity extends Activity {
         addSample();
 
         section("Playback");
+        row("Video Player", ENGINES[prefs.engineMode()], new Action() {
+            public void run(TextView v) {
+                prefs.setEngineMode((prefs.engineMode() + 1) % ENGINES.length);
+                v.setText(ENGINES[prefs.engineMode()]);
+            }
+        });
+        row("Channels Using VLC", prefs.vlcItemCount() == 0 ? "None" : prefs.vlcItemCount() + "  ·  Reset", new Action() {
+            public void run(TextView v) {
+                prefs.clearVlcItems();
+                v.setText("None");
+                Toast.makeText(SettingsActivity.this, "All channels will start on the Android player again", Toast.LENGTH_SHORT).show();
+            }
+        });
         row("Live Stream Format", liveLabel(), new Action() {
             public void run(TextView v) {
                 prefs.setLiveFormat("ts".equals(prefs.liveFormat()) ? "m3u8" : "ts");
@@ -177,6 +190,7 @@ public class SettingsActivity extends Activity {
         row("Version", "YM Player " + ver, null);
     }
 
+    static final String[] ENGINES = {"Automatic (recommended)", "Android player", "VLC player"};
     static final String[] PREVIEW = {"Off", "On (muted)", "On with sound"};
     static final int[] REFRESH_HOURS = {12, 24, 6, 0, -1};
 
