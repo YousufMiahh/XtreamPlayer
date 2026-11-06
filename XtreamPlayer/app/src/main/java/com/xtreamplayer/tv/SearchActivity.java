@@ -154,12 +154,24 @@ public class SearchActivity extends Activity {
         if (all == null) return;
         Async.run(new Async.Work<List<Item>>() {
             public List<Item> run() {
+                // Ignore punctuation, spaces and accents: "spiderman", "spider man" and "spiderm"
+                // all find "Spider-Man". Several words match in any order ("man spider").
+                String folded = Item.fold(q);
+                String qc = folded.replaceAll("[^\\p{L}\\p{N}]+", "");
+                List<String> words = new ArrayList<>();
+                for (String w : folded.split("[^\\p{L}\\p{N}]+")) if (!w.isEmpty()) words.add(w);
                 List<Item> starts = new ArrayList<>(), contains = new ArrayList<>();
+                if (qc.length() < 2 || words.isEmpty()) return starts;
                 for (Item it : all) {
-                    String n = it.lower();
-                    int at = n.indexOf(q);
-                    if (at < 0) continue;
-                    if (at == 0) starts.add(it);
+                    String c = it.compact();
+                    boolean hit = c.contains(qc);
+                    if (!hit && words.size() > 1) {
+                        hit = true;
+                        for (String w : words) if (!c.contains(w)) { hit = false; break; }
+                    }
+                    if (!hit) continue;
+                    // A title (or any word in it, e.g. after "UK:") starting with the search ranks first
+                    if (c.startsWith(qc) || it.spaced().contains(" " + words.get(0))) starts.add(it);
                     else if (contains.size() < MAX) contains.add(it);
                     if (starts.size() >= MAX) break;
                 }

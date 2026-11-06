@@ -26,12 +26,30 @@ public class Item {
     /** Episode running time, kept separately so the resume note can be rebuilt. */
     public String duration;
 
-    private String lower;
+    private String lower, compact, spaced;
 
     /** Lower-cased name, computed once (makes searching big libraries fast). */
     public String lower() {
         if (lower == null) lower = name.toLowerCase(java.util.Locale.UK);
         return lower;
+    }
+
+    /** Name with accents, punctuation and spaces removed: "Spider-Man: Homecoming" → "spidermanhomecoming". */
+    public String compact() {
+        if (compact == null) compact = fold(name).replaceAll("[^\\p{L}\\p{N}]+", "");
+        return compact;
+    }
+
+    /** Name as words separated by single spaces, with a leading space: " spider man homecoming". */
+    public String spaced() {
+        if (spaced == null) spaced = " " + fold(name).replaceAll("[^\\p{L}\\p{N}]+", " ").trim();
+        return spaced;
+    }
+
+    /** Lower-case and strip accents (é → e). */
+    public static String fold(String s) {
+        String n = java.text.Normalizer.normalize(s.toLowerCase(java.util.Locale.UK), java.text.Normalizer.Form.NFD);
+        return n.replaceAll("\\p{M}+", "");
     }
 
     public Item() {}
