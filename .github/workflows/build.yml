@@ -43,10 +43,11 @@ jobs:
       - name: Report build errors
         if: failure()
         run: |
-          # Surface the real error as annotations so it can be read without opening the log.
-          grep -nE "What went wrong|error:|ERROR|Could not|Failed|Manifest merger|> " build.log | grep -v "^.*at org.gradle" | head -40 > errs.txt || true
-          sed -n '/What went wrong/,/Try:/p' build.log | head -40 >> errs.txt || true
-          while IFS= read -r line; do echo "::error::${line//%/%25}"; done < errs.txt
+          # Surface the real error as one annotation so it can be read without opening the log.
+          msg=$(sed -n '/What went wrong/,/\* Try:/p' build.log | head -60)
+          [ -z "$msg" ] && msg=$(grep -nE "error:|ERROR|Could not|FAILED" build.log | head -40)
+          msg="${msg//'%'/'%25'}"; msg="${msg//$'\n'/'%0A'}"; msg="${msg//$'\r'/'%0D'}"
+          echo "::error title=Build failed::$msg"
 
       - name: Rename APK
         run: cp "$PROJECT_DIR/app/build/outputs/apk/release/app-release.apk" XtreamPlayer.apk
