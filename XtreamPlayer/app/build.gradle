@@ -6,7 +6,7 @@ def runNumber = (System.getenv("GITHUB_RUN_NUMBER") ?: "1").toInteger()
 
 android {
     namespace 'com.xtreamplayer.tv'
-    compileSdk 34
+    compileSdk 36
 
     defaultConfig {
         applicationId "com.xtreamplayer.tv"
@@ -20,7 +20,7 @@ android {
         }
     }
 
-    packagingOptions {
+    packaging {
         jniLibs {
             useLegacyPackaging true
         }
