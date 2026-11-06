@@ -229,6 +229,19 @@ public class Prefs {
 
     private Set<String> set(String k) { return sp.getStringSet(ns() + k, new HashSet<String>()); }
 
+    SharedPreferences raw() { return sp; }
+
+    /** True if VLC crashed the app on this device; we then use the Android player. */
+    public boolean vlcBroken() { return sp.getBoolean("vlc_broken", false); }
+    public void setVlcBroken(boolean b) { sp.edit().putBoolean("vlc_broken", b).apply(); }
+
+    /** One-time notice to show after VLC crashed. */
+    public boolean takeVlcBrokenNotice() {
+        boolean b = sp.getBoolean("vlc_broken_notice", false);
+        if (b) sp.edit().putBoolean("vlc_broken_notice", false).apply();
+        return b;
+    }
+
     public boolean darkTheme() { return sp.getBoolean("dark", true); }
     public void setDarkTheme(boolean b) { sp.edit().putBoolean("dark", b).apply(); }
 

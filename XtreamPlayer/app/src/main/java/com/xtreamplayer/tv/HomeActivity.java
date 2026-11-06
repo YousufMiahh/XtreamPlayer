@@ -61,7 +61,41 @@ public class HomeActivity extends Activity {
 
         buildLocalRows();
         startLibrary();
+        showCrashNotice();
         focusFirstCard();
+    }
+
+    /** After a crash: explain what happened and show the report (so it can be photographed and sent). */
+    private void showCrashNotice() {
+        boolean vlc = prefs.takeVlcBrokenNotice();
+        boolean fresh = App.crashIsNew(this);
+        final String crash = fresh || vlc ? App.lastCrash(this) : null;
+        if (!vlc && crash == null) return;
+        String msg = vlc
+                ? "The VLC player stopped the app on this TV, so YM Player has switched to the Android player for now. "
+                  + "You can try VLC again in Settings → Playback → Video Player."
+                : "YM Player closed unexpectedly last time. Here's the error report — a photo of it helps fix the problem.";
+        android.app.AlertDialog.Builder b = new android.app.AlertDialog.Builder(this,
+                Ui.DARK ? android.R.style.Theme_Material_Dialog_Alert : android.R.style.Theme_Material_Light_Dialog_Alert)
+                .setTitle(vlc ? "Switched to the Android player" : "Sorry about that")
+                .setMessage(msg)
+                .setPositiveButton("OK", null);
+        if (crash != null) {
+            b.setNeutralButton("Show error report", new android.content.DialogInterface.OnClickListener() {
+                public void onClick(android.content.DialogInterface d, int w) {
+                    TextView t = Ui.text(HomeActivity.this, crash, 12, Ui.TEXT);
+                    t.setTypeface(android.graphics.Typeface.MONOSPACE);
+                    int p = Ui.dp(HomeActivity.this, 20);
+                    t.setPadding(p, p, p, p);
+                    ScrollView sv = new ScrollView(HomeActivity.this);
+                    sv.addView(t);
+                    new android.app.AlertDialog.Builder(HomeActivity.this,
+                            Ui.DARK ? android.R.style.Theme_Material_Dialog_Alert : android.R.style.Theme_Material_Light_Dialog_Alert)
+                            .setTitle("Error report").setView(sv).setPositiveButton("OK", null).show();
+                }
+            });
+        }
+        b.show();
     }
 
     /** Loads the saved library (instant) and refreshes it in the background when it's due. */

@@ -56,8 +56,6 @@ public class VlcEngine implements Engine {
         mp = new MediaPlayer(vlc);
         layout = new VLCVideoLayout(c);
         layout.setFocusable(false);
-        mp.attachViews(layout, null, true, false);
-        mp.setVideoScale(MediaPlayer.ScaleType.SURFACE_BEST_FIT);
         mp.setEventListener(new MediaPlayer.EventListener() {
             public void onEvent(MediaPlayer.Event e) {
                 if (released) return;
@@ -66,6 +64,7 @@ public class VlcEngine implements Engine {
                         l.onBuffering(e.getBuffering() < 100f);
                         break;
                     case MediaPlayer.Event.Playing:
+                        markStarting(false); // VLC got going without crashing
                         l.onBuffering(false);
                         if (!ready) {
                             ready = true;
@@ -97,8 +96,25 @@ public class VlcEngine implements Engine {
     public View view() { return layout; }
     public String name() { return "VLC player"; }
 
+    /** Attach the video surface; done on first load, once the view is in the window. */
+    private boolean attached;
+
+    private void attach() {
+        if (attached) return;
+        attached = true;
+        mp.attachViews(layout, null, true, false);
+        mp.setVideoScale(MediaPlayer.ScaleType.SURFACE_BEST_FIT);
+    }
+
+    /** Remembered across a crash: see App. Written synchronously so it survives a native crash. */
+    private void markStarting(boolean on) {
+        prefs.raw().edit().putBoolean("vlc_in_flight", on).commit();
+    }
+
     public void load(String url, long startMs) {
         ready = false;
+        attach();
+        markStarting(true);
         Media m = new Media(vlc, Uri.parse(url));
         m.setHWDecoderEnabled(true, false);
         m.addOption(":http-user-agent=" + prefs.userAgent());
@@ -163,10 +179,13 @@ public class VlcEngine implements Engine {
     public void release() {
         if (released) return;
         released = true;
-        mp.setEventListener(null);
-        mp.stop();
-        mp.detachViews();
-        mp.release();
-        vlc.release();
+        markStarting(false);
+        try {
+            mp.stop();
+            if (attached) mp.detachViews();
+            mp.release();
+            vlc.release();
+        } catch (Throwable ignored) {
+        }
     }
 }

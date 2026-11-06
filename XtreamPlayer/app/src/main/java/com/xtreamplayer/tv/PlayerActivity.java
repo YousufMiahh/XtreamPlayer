@@ -349,6 +349,7 @@ public class PlayerActivity extends Activity implements Engine.Listener {
 
     /** Settings → Video Player: 0 Automatic (VLC for Live TV, Android for Movies & Series), 1 Android, 2 VLC. */
     private boolean wantsVlc(Item it) {
+        if (prefs.vlcBroken()) return false; // VLC crashed on this TV before
         int mode = prefs.engineMode();
         if (mode == 2) return true;
         if (mode == 1) return false;
@@ -502,7 +503,16 @@ public class PlayerActivity extends Activity implements Engine.Listener {
         errorText.setVisibility(View.GONE);
         lastRendered = -1;
         stallTicks = 0;
-        engine.load(api.playUrl(current(), liveFormat), startMs);
+        try {
+            engine.load(api.playUrl(current(), liveFormat), startMs);
+        } catch (Throwable t) { // VLC failed to start: record it and use the Android player
+            App.writeCrash(this, t);
+            if (!usingVlc) throw t instanceof RuntimeException ? (RuntimeException) t : new RuntimeException(t);
+            prefs.setVlcBroken(true);
+            startEngine(false);
+            status("VLC couldn't start — using the Android player");
+            engine.load(api.playUrl(current(), liveFormat), startMs);
+        }
     }
 
     private void savePosition() {

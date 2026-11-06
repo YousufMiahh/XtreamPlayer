@@ -134,12 +134,22 @@ public class SettingsActivity extends Activity {
         addSample();
 
         section("Playback");
-        row("Video Player", ENGINES[prefs.engineMode()], new Action() {
+        row("Video Player", prefs.vlcBroken() ? "Android player (VLC crashed — select to retry)" : ENGINES[prefs.engineMode()], new Action() {
             public void run(TextView v) {
-                prefs.setEngineMode((prefs.engineMode() + 1) % ENGINES.length);
+                if (prefs.vlcBroken()) {
+                    prefs.setVlcBroken(false); // give VLC another go
+                } else {
+                    prefs.setEngineMode((prefs.engineMode() + 1) % ENGINES.length);
+                }
                 v.setText(ENGINES[prefs.engineMode()]);
             }
         });
+        final String crash = App.lastCrash(this);
+        if (crash != null) {
+            row("Last Error Report", "View", new Action() {
+                public void run(TextView v) { showCrash(crash); }
+            });
+        }
         row("Remembered Player Choices", prefs.playerChoiceCount() == 0 ? "None" : prefs.playerChoiceCount() + "  ·  Reset", new Action() {
             public void run(TextView v) {
                 prefs.clearPlayerChoices();
@@ -193,6 +203,23 @@ public class SettingsActivity extends Activity {
         credit.setGravity(Gravity.CENTER);
         credit.setPadding(0, Ui.dp(this, 22), 0, Ui.dp(this, 10));
         list.addView(credit, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+    }
+
+    void showCrash(String text) {
+        TextView t = Ui.text(this, text, 12, Ui.TEXT);
+        t.setTypeface(android.graphics.Typeface.MONOSPACE);
+        int p = Ui.dp(this, 20);
+        t.setPadding(p, p, p, p);
+        ScrollView sv = new ScrollView(this);
+        sv.addView(t);
+        new AlertDialog.Builder(this, Ui.DARK ? android.R.style.Theme_Material_Dialog_Alert : android.R.style.Theme_Material_Light_Dialog_Alert)
+                .setTitle("Last error report")
+                .setView(sv)
+                .setPositiveButton("OK", null)
+                .setNegativeButton("Delete report", new DialogInterface.OnClickListener() {
+                    public void onClick(DialogInterface d, int w) { App.clearCrash(SettingsActivity.this); }
+                })
+                .show();
     }
 
     static final String[] ENGINES = {"Automatic — VLC for Live TV", "Android player for everything", "VLC for everything"};
