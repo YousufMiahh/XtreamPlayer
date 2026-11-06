@@ -22,9 +22,20 @@ public final class Open {
             int idx = 0;
             if (siblings != null) {
                 for (Item s : siblings) if (Item.LIVE.equals(s.type)) q.add(s);
-                idx = Math.max(0, q.indexOf(it));
             }
-            if (q.isEmpty()) q.add(it);
+            // Find the picked channel by its ID (the list may hold different copies of it)
+            idx = -1;
+            for (int i = 0; i < q.size(); i++) {
+                if (q.get(i).key().equals(it.key())) {
+                    idx = i;
+                    break;
+                }
+            }
+            if (idx < 0) { // not in the list at all: play just this one
+                q.clear();
+                q.add(it);
+                idx = 0;
+            }
             play(a, q, idx);
         } else {
             List<Item> q = new ArrayList<>();

@@ -148,11 +148,7 @@ public class BrowseActivity extends Activity {
         contentFrame.addView(spinner, new FrameLayout.LayoutParams(Ui.dp(this, 48), Ui.dp(this, 48), Gravity.CENTER));
         mid.addView(contentFrame, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
         content.setId(View.generateViewId());
-        TextView favHint = Ui.oneLine(Ui.text(this, live
-                ? "Hold OK or press ☰ to add a channel to Favourites   ·   ▶ for the Favourites button"
-                : "Hold OK or press ☰ to add to Favourites", 14, Ui.TEXT3));
-        favHint.setPadding(Ui.dp(this, 8), Ui.dp(this, 10), 0, 0);
-        mid.addView(favHint);
+
         cols.addView(mid, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1));
 
         if (live) cols.addView(buildInfoPanel(), panelParams());
