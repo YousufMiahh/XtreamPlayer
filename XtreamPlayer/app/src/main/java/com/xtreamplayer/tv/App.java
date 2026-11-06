@@ -32,12 +32,22 @@ public class App extends Application {
                 if (previous != null) previous.uncaughtException(t, e);
             }
         });
-        // Did VLC take the app down last time?
+        // Did VLC take the app down last time? Only give up on it after two crashes in a row
+        // (one can happen while VLC sets itself up); a successful playback resets the count.
         SharedPreferences sp = getSharedPreferences("xtream", MODE_PRIVATE);
-        if (sp.getBoolean("vlc_in_flight", false)) {
-            sp.edit().putBoolean("vlc_in_flight", false).putBoolean("vlc_broken", true)
-                    .putBoolean("vlc_broken_notice", true).commit();
+        if (!sp.getBoolean("vlc_fix_v2", false)) {
+            // This version fixes VLC's start-up, so give it a clean slate once.
+            sp.edit().putBoolean("vlc_fix_v2", true).putBoolean("vlc_broken", false)
+                    .putBoolean("vlc_in_flight", false).putInt("vlc_crashes", 0).commit();
         }
+        if (sp.getBoolean("vlc_in_flight", false)) {
+            int crashes = sp.getInt("vlc_crashes", 0) + 1;
+            SharedPreferences.Editor e = sp.edit().putBoolean("vlc_in_flight", false).putInt("vlc_crashes", crashes);
+            if (crashes >= 2) e.putBoolean("vlc_broken", true).putBoolean("vlc_broken_notice", true).putInt("vlc_crashes", 0);
+            e.commit();
+        }
+        // Get VLC ready in the background so the first channel opens first time.
+        if (new Prefs(this).engineMode() != 1) VlcHolder.warmUp(this);
     }
 
     static void writeCrash(Context c, Throwable e) {

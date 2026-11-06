@@ -138,6 +138,7 @@ public class SettingsActivity extends Activity {
             public void run(TextView v) {
                 if (prefs.vlcBroken()) {
                     prefs.setVlcBroken(false); // give VLC another go
+                    prefs.raw().edit().putInt("vlc_crashes", 0).apply();
                 } else {
                     prefs.setEngineMode((prefs.engineMode() + 1) % ENGINES.length);
                 }

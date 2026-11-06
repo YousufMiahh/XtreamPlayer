@@ -17,9 +17,6 @@ import java.util.List;
  * in live IPTV streams — the usual cause of "sound plays but picture freezes" with ExoPlayer.
  */
 public class VlcEngine implements Engine {
-    /** VLC's relative subtitle sizes (smaller number = bigger text). */
-    private static final int[] REL_SIZES = {20, 17, 14, 11};
-
     private final Prefs prefs;
     private final LibVLC vlc;
     private final MediaPlayer mp;
@@ -30,29 +27,7 @@ public class VlcEngine implements Engine {
     public VlcEngine(Context c, Prefs prefs, final Listener l) {
         this.prefs = prefs;
         this.l = l;
-        ArrayList<String> o = new ArrayList<>();
-        o.add("--http-reconnect");
-        o.add("--network-caching=2000");
-        o.add("--live-caching=2000");
-        o.add("--clock-jitter=0");
-        o.add("--clock-synchro=0");
-        o.add("--audio-time-stretch");
-        o.add("--avcodec-skiploopfilter=1");
-        o.add("--avcodec-hurry-up");
-        // Subtitle look, from Settings
-        int color = PlayerActivity.SUB_COLORS[prefs.subtitleColor()] & 0xFFFFFF;
-        o.add("--freetype-color=" + color);
-        o.add("--freetype-rel-fontsize=" + REL_SIZES[Math.max(0, Math.min(3, prefs.subtitleSize()))]);
-        o.add("--freetype-bold");
-        if (prefs.subtitleBackground()) {
-            o.add("--freetype-background-color=0");
-            o.add("--freetype-background-opacity=" + PlayerActivity.SUB_OPACITY_ALPHA[prefs.subtitleOpacity()]);
-            o.add("--freetype-shadow-opacity=0");
-        } else {
-            o.add("--freetype-background-opacity=0");
-            o.add("--freetype-shadow-opacity=200");
-        }
-        vlc = new LibVLC(c, o);
+        vlc = VlcHolder.get(c, prefs); // shared, already warmed up at launch
         mp = new MediaPlayer(vlc);
         layout = new VLCVideoLayout(c);
         layout.setFocusable(false);
@@ -65,6 +40,7 @@ public class VlcEngine implements Engine {
                         break;
                     case MediaPlayer.Event.Playing:
                         markStarting(false); // VLC got going without crashing
+                        prefs.raw().edit().putInt("vlc_crashes", 0).apply();
                         l.onBuffering(false);
                         if (!ready) {
                             ready = true;
@@ -183,8 +159,7 @@ public class VlcEngine implements Engine {
         try {
             mp.stop();
             if (attached) mp.detachViews();
-            mp.release();
-            vlc.release();
+            mp.release(); // the shared LibVLC stays alive for the next channel
         } catch (Throwable ignored) {
         }
     }
