@@ -38,6 +38,7 @@
             android:exported="false"
             android:windowSoftInputMode="adjustPan" />
 
+        <activity android:name=".SetupActivity" />
         <activity android:name=".HomeActivity" />
         <activity android:name=".BrowseActivity" android:windowSoftInputMode="stateHidden|adjustNothing" />
         <activity android:name=".SeriesActivity" />

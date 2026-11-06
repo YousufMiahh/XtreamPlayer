@@ -16,8 +16,8 @@ import java.io.InputStream;
 
 /** A brief branded screen on launch, then on to the app. */
 public class SplashActivity extends Activity {
-    private static final long SHOW_MS = 1400;
-    private boolean left;
+    private static final long SHOW_MS = 1400, MAX_WAIT_MS = 6000;
+    private boolean left, shownLongEnough, libraryReady;
 
     private final Runnable next = new Runnable() {
         public void run() {
@@ -70,7 +70,36 @@ public class SplashActivity extends Activity {
         by.setAlpha(0f);
         by.animate().alpha(1f).setStartDelay(380).setDuration(450).start();
 
-        root.postDelayed(next, SHOW_MS);
+        // While the logo shows, load Live TV (and every section's categories) from the copy
+        // saved on the device, so the first tap on Live TV is instant.
+        final Prefs prefs = new Prefs(this);
+        if (prefs.hasAccount()) {
+            final XtreamApi api = new XtreamApi(prefs);
+            Async.run(new Async.Work<Boolean>() {
+                public Boolean run() throws Exception {
+                    if (!Repo.hasLibrary(api)) return false; // first time: the setup screen handles it
+                    Repo.streams(api, Item.LIVE, null);
+                    Repo.categories(api, Item.LIVE);
+                    Repo.categories(api, Item.MOVIE);
+                    Repo.categories(api, Item.SERIES);
+                    return true;
+                }
+            }, new Async.Done<Boolean>() {
+                public void done(Boolean r, Exception e) {
+                    libraryReady = true;
+                    if (shownLongEnough) next.run();
+                }
+            });
+        } else {
+            libraryReady = true;
+        }
+        root.postDelayed(new Runnable() {
+            public void run() {
+                shownLongEnough = true;
+                if (libraryReady) next.run();
+            }
+        }, SHOW_MS);
+        root.postDelayed(next, MAX_WAIT_MS); // never keep you waiting long
     }
 
     @Override

@@ -138,7 +138,8 @@ public final class Repo {
 
     /** True if a saved copy of the movie and series libraries exists on disk. */
     public static boolean hasLibrary(XtreamApi api) {
-        return dir != null && file(api, Item.MOVIE, "all").exists() && file(api, Item.SERIES, "all").exists();
+        return dir != null && file(api, Item.LIVE, "all").exists()
+                && file(api, Item.MOVIE, "all").exists() && file(api, Item.SERIES, "all").exists();
     }
 
     /** True if the saved library is missing or older than the user's refresh setting. */
@@ -155,26 +156,41 @@ public final class Repo {
     public static void refreshAll(XtreamApi api, Prefs prefs) throws IOException {
         check(api);
         refreshing = true;
+        int oldPriority = android.os.Process.getThreadPriority(android.os.Process.myTid());
+        android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND); // never compete with the screen
         try {
             String[] types = {Item.LIVE, Item.MOVIE, Item.SERIES};
-            for (String t : types) {
-                List<Item> cats = api.categories(t);
-                List<Item> all = api.streams(t, null);
-                synchronized (lock(t)) {
-                    writeFile(file(api, t, "cats"), cats);
-                    writeFile(file(api, t, "all"), all);
-                    synchronized (Repo.class) {
-                        Iterator<String> it = LISTS.keySet().iterator();
-                        while (it.hasNext()) if (it.next().startsWith(t + "|")) it.remove();
-                        LISTS.put(t + "|*", all);
-                        CATS.put(t, cats);
-                    }
-                }
-            }
+            for (String t : types) downloadType(api, t);
             prefs.setLastRefresh(System.currentTimeMillis());
         } finally {
+            android.os.Process.setThreadPriority(oldPriority);
             refreshing = false;
         }
+    }
+
+    /**
+     * Downloads one section (categories + everything in it), saves it to disk and swaps it into
+     * memory. Readers keep using the old copy until the new one is ready, so nothing waits on this.
+     * @return number of items
+     */
+    public static int downloadType(XtreamApi api, String t) throws IOException {
+        check(api);
+        List<Item> cats = api.categories(t);
+        List<Item> all = api.streams(t, null);
+        writeFile(file(api, t, "cats"), cats);
+        writeFile(file(api, t, "all"), all);
+        synchronized (Repo.class) {
+            Iterator<String> it = LISTS.keySet().iterator();
+            while (it.hasNext()) if (it.next().startsWith(t + "|")) it.remove();
+            LISTS.put(t + "|*", all);
+            CATS.put(t, cats);
+        }
+        return all.size();
+    }
+
+    /** Mark a full download as done (used by the setup screen). */
+    public static void markRefreshed(Prefs prefs) {
+        prefs.setLastRefresh(System.currentTimeMillis());
     }
 
     /** Starts a background refresh if one is due. */
@@ -194,14 +210,22 @@ public final class Repo {
 
     /** Warm the memory cache from disk/provider in the background (makes search instant). */
     public static void preload(final XtreamApi api) {
-        final String[] types = {Item.LIVE, Item.MOVIE, Item.SERIES};
-        for (final String t : types) {
-            Async.run(new Async.Work<List<Item>>() {
-                public List<Item> run() throws Exception { return streams(api, t, null); }
-            }, new Async.Done<List<Item>>() {
-                public void done(List<Item> r, Exception e) {}
-            });
-        }
+        // One section at a time, at low priority: loading all three at once strained the
+        // Fire Stick's memory and made the whole app stall.
+        Thread t = new Thread(new Runnable() {
+            public void run() {
+                android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND);
+                String[] types = {Item.LIVE, Item.MOVIE, Item.SERIES};
+                for (String type : types) {
+                    if (refreshing) return;
+                    try {
+                        if (dir != null && file(api, type, "all").exists()) streams(api, type, null);
+                    } catch (Throwable ignored) {
+                    }
+                }
+            }
+        }, "library-preload");
+        t.start();
     }
 
     public static void deleteFiles(String server, String user) {

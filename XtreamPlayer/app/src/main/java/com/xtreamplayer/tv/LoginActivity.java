@@ -50,7 +50,11 @@ public class LoginActivity extends Activity {
         prefs = new Prefs(this);
         adding = getIntent().getBooleanExtra("add", false);
         if (prefs.hasAccount() && !adding && !getIntent().getBooleanExtra("switch", false)) {
-            startActivity(new Intent(this, HomeActivity.class));
+            // Signed in: straight to Home, or to the one-time setup if the library isn't saved yet
+            Repo.init(this);
+            boolean ready = Repo.hasLibrary(new XtreamApi(prefs));
+            startActivity(new Intent(this, ready ? HomeActivity.class : SetupActivity.class));
+            overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out);
             finish();
             return;
         }
@@ -287,9 +291,10 @@ public class LoginActivity extends Activity {
                 replyPhone(true, "Added " + acc.label() + ". Your TV is loading it now.");
                 Repo.clear();
                 ImageLoader.setUserAgent(prefs.userAgent());
-                Intent home = new Intent(LoginActivity.this, HomeActivity.class);
-                home.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TASK | Intent.FLAG_ACTIVITY_NEW_TASK);
-                startActivity(home);
+                // Download everything once, with progress, before showing Home
+                Intent setup = new Intent(LoginActivity.this, SetupActivity.class);
+                setup.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TASK | Intent.FLAG_ACTIVITY_NEW_TASK);
+                startActivity(setup);
                 finish();
             }
         });

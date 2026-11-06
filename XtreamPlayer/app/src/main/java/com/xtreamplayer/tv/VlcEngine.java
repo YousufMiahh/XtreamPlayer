@@ -22,7 +22,9 @@ public class VlcEngine implements Engine {
     private final MediaPlayer mp;
     private final VLCVideoLayout layout;
     private final Listener l;
-    private boolean ready, released;
+    private volatile boolean ready, released;
+    /** VLC's stop/set-media can block while a network stream closes: keep that off the screen thread. */
+    private final java.util.concurrent.ExecutorService ops = java.util.concurrent.Executors.newSingleThreadExecutor();
 
     public VlcEngine(Context c, Prefs prefs, final Listener l) {
         this.prefs = prefs;
@@ -91,19 +93,32 @@ public class VlcEngine implements Engine {
         ready = false;
         attach();
         markStarting(true);
-        Media m = new Media(vlc, Uri.parse(url));
+        final Media m = new Media(vlc, Uri.parse(url));
         m.setHWDecoderEnabled(true, false);
         m.addOption(":http-user-agent=" + prefs.userAgent());
         if (startMs > 0) m.addOption(":start-time=" + (startMs / 1000.0));
-        mp.setMedia(m);
-        m.release();
-        mp.play();
+        ops.execute(new Runnable() {
+            public void run() {
+                if (released) {
+                    m.release();
+                    return;
+                }
+                mp.setMedia(m); // stops the previous channel, which can take a moment
+                m.release();
+                mp.play();
+            }
+        });
     }
 
     public void retry(boolean behindLiveWindow) {
         ready = false;
-        mp.stop();
-        mp.play();
+        ops.execute(new Runnable() {
+            public void run() {
+                if (released) return;
+                mp.stop();
+                mp.play();
+            }
+        });
     }
 
     public void play() { mp.play(); }
@@ -157,10 +172,18 @@ public class VlcEngine implements Engine {
         released = true;
         markStarting(false);
         try {
-            mp.stop();
-            if (attached) mp.detachViews();
-            mp.release(); // the shared LibVLC stays alive for the next channel
+            if (attached) mp.detachViews(); // views must be let go of on the screen thread
         } catch (Throwable ignored) {
         }
+        ops.execute(new Runnable() {
+            public void run() {
+                try {
+                    mp.stop();
+                    mp.release(); // the shared LibVLC stays alive for the next channel
+                } catch (Throwable ignored) {
+                }
+            }
+        });
+        ops.shutdown();
     }
 }
