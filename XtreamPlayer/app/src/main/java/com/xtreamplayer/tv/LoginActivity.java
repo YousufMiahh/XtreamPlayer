@@ -55,6 +55,8 @@ public class LoginActivity extends Activity {
         col.setOrientation(LinearLayout.VERTICAL);
         int pad = Ui.dp(this, 44);
         col.setPadding(pad, pad, pad, pad);
+        col.setClipChildren(false);
+        col.setClipToPadding(false);
         col.setBackground(Ui.rounded(this, Ui.SURFACE_LO, 0, 28));
         FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(Ui.dp(this, 620), ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER);
         root.addView(col, lp);

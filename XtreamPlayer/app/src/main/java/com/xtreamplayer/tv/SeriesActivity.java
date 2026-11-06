@@ -68,6 +68,7 @@ public class SeriesActivity extends Activity {
         LinearLayout page = new LinearLayout(this);
         page.setOrientation(LinearLayout.VERTICAL);
         page.setClipChildren(false);
+        page.setClipToPadding(false);
         page.setPadding(0, Ui.dp(this, 56), 0, Ui.dp(this, 28));
         root.addView(page, match());
 
@@ -75,6 +76,7 @@ public class SeriesActivity extends Activity {
         info.setOrientation(LinearLayout.VERTICAL);
         info.setGravity(Gravity.BOTTOM);
         info.setClipChildren(false);
+        info.setClipToPadding(false);
         info.setPadding(Ui.dp(this, 80), 0, 0, 0);
         title = Ui.lines(Ui.title(this, series.name, 44), 2);
         meta = Ui.oneLine(Ui.medium(this, series.info == null ? "" : series.info, 18, Ui.TEXT2));
@@ -87,6 +89,7 @@ public class SeriesActivity extends Activity {
         buttons = new LinearLayout(this);
         buttons.setOrientation(LinearLayout.HORIZONTAL);
         buttons.setClipChildren(false);
+        buttons.setClipToPadding(false);
         buttons.setPadding(0, Ui.dp(this, 26), 0, 0);
         info.addView(title);
         info.addView(meta);

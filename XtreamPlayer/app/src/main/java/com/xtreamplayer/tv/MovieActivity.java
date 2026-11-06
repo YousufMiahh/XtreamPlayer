@@ -59,6 +59,7 @@ public class MovieActivity extends Activity {
         col.setOrientation(LinearLayout.VERTICAL);
         col.setGravity(Gravity.BOTTOM);
         col.setClipChildren(false);
+        col.setClipToPadding(false);
         int pad = Ui.dp(this, 80);
         col.setPadding(pad, pad, pad, Ui.dp(this, 72));
         FrameLayout.LayoutParams clp = new FrameLayout.LayoutParams(Ui.dp(this, 900), ViewGroup.LayoutParams.MATCH_PARENT, Gravity.START);
@@ -78,6 +79,7 @@ public class MovieActivity extends Activity {
         buttons = new LinearLayout(this);
         buttons.setOrientation(LinearLayout.HORIZONTAL);
         buttons.setClipChildren(false);
+        buttons.setClipToPadding(false);
         buttons.setPadding(0, Ui.dp(this, 36), 0, 0);
         col.addView(buttons);
 
