@@ -19,7 +19,15 @@ public class HomeActivity extends Activity {
     private LinearLayout localRows, remoteRows;
     private TextView empty;
     private boolean resumedOnce;
-    private List<Item> newMovies, newSeries;
+    private List<Item> newMovies, newSeries, topMovies, topSeries;
+    private String topSig = "";
+    private static final long TOP10_EVERY = 60 * 60_000L;
+    private final Runnable top10Tick = new Runnable() {
+        public void run() {
+            loadTop10();
+            Async.MAIN.postDelayed(this, TOP10_EVERY);
+        }
+    };
 
     @Override
     protected void onCreate(Bundle b) {
@@ -101,7 +109,7 @@ public class HomeActivity extends Activity {
     /** Loads the saved library (instant) and refreshes it in the background when it's due. */
     private void startLibrary() {
         Repo.onUpdated = new Runnable() { // Movies/Series finished in the background: refresh the rows
-            public void run() { if (!isFinishing()) loadNewArrivals(); }
+            public void run() { if (!isFinishing()) { loadNewArrivals(); loadTop10(); } }
         };
         if (Repo.isRefreshing()) { // setup is still finishing Movies & Series
             loadNewArrivals();
@@ -222,6 +230,8 @@ public class HomeActivity extends Activity {
 
     private void buildRemoteRows() {
         remoteRows.removeAllViews();
+        add(remoteRows, "Top 10 Movies on Netflix UK", topMovies, Cards.Shape.POSTER);
+        add(remoteRows, "Top 10 Series on Netflix UK", topSeries, Cards.Shape.POSTER);
         if (newMovies != null) add(remoteRows, "Recently Added Movies", newMovies, Cards.Shape.POSTER);
         if (newSeries != null) add(remoteRows, "Recently Added Series", newSeries, Cards.Shape.POSTER);
         updateEmpty();
@@ -265,6 +275,53 @@ public class HomeActivity extends Activity {
                 });
             }
         });
+    }
+
+    /** Netflix UK Top 10, matched to this provider's library. Checked hourly; only rebuilds the rows if it changed. */
+    private void loadTop10() {
+        Async.runOn(Top10.WORKER, new Async.Work<List<Item>[]>() {
+            @SuppressWarnings("unchecked")
+            public List<Item>[] run() throws Exception {
+                Top10.Data d = Top10.refresh(getApplicationContext());
+                if (d == null) return null;
+                List<Item> movies = Repo.cached(Item.MOVIE, null), series = Repo.cached(Item.SERIES, null);
+                if (movies == null && Repo.hasLibrary(api)) movies = Repo.streams(api, Item.MOVIE, null);
+                if (series == null && Repo.hasLibrary(api)) series = Repo.streams(api, Item.SERIES, null);
+                return new List[]{Top10.match(d.films, movies), Top10.match(d.tv, series)};
+            }
+        }, new Async.Done<List<Item>[]>() {
+            public void done(List<Item>[] r, Exception e) {
+                if (isFinishing() || r == null) return;
+                String sig = sig(r[0]) + "|" + sig(r[1]);
+                if (sig.equals(topSig)) return;
+                topSig = sig;
+                topMovies = r[0];
+                topSeries = r[1];
+                View f = getCurrentFocus();
+                boolean inRemote = f != null && isInside(f, remoteRows);
+                buildRemoteRows();
+                if (inRemote || getCurrentFocus() == null) focusFirstCard();
+            }
+        });
+    }
+
+    private static String sig(List<Item> l) {
+        StringBuilder b = new StringBuilder();
+        if (l != null) for (Item it : l) b.append(it.key()).append(',');
+        return b.toString();
+    }
+
+    @Override
+    protected void onStart() {
+        super.onStart();
+        Async.MAIN.removeCallbacks(top10Tick);
+        Async.MAIN.post(top10Tick); // check now (cheap if not due), then every hour while Home is open
+    }
+
+    @Override
+    protected void onStop() {
+        Async.MAIN.removeCallbacks(top10Tick);
+        super.onStop();
     }
 
     private void focusFirstCard() {
