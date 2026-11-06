@@ -189,6 +189,10 @@ public class SettingsActivity extends Activity {
         } catch (Exception ignored) {
         }
         row("Version", "YM Player " + ver, null);
+        TextView credit = Ui.medium(this, "Developed by Yousuf Miah", 16, Ui.TEXT2);
+        credit.setGravity(Gravity.CENTER);
+        credit.setPadding(0, Ui.dp(this, 22), 0, Ui.dp(this, 10));
+        list.addView(credit, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
     }
 
     static final String[] ENGINES = {"Automatic — VLC for Live TV", "Android player for everything", "VLC for everything"};
