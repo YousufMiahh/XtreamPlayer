@@ -164,8 +164,44 @@ public class HomeActivity extends Activity {
         public void menu(Item it, View card) {
             if (Item.EPISODE.equals(it.type)) return;
             Open.toggleFav(HomeActivity.this, prefs, it);
+            refreshKeepingPlace(card);
         }
     };
+
+    /** Rebuild the rows straight away (e.g. a favourite was removed) and keep focus near where it was. */
+    private void refreshKeepingPlace(View card) {
+        String shelfTitle = null;
+        int shelfIndex = -1, cardIndex = 0;
+        if (card != null && card.getParent() instanceof ViewGroup) {
+            ViewGroup row = (ViewGroup) card.getParent();
+            cardIndex = row.indexOfChild(card);
+            View box = row.getParent() instanceof View ? (View) ((View) row.getParent()).getParent() : null;
+            if (box instanceof ViewGroup && box.getParent() == localRows) {
+                shelfIndex = localRows.indexOfChild(box);
+                View t = ((ViewGroup) box).getChildAt(0);
+                if (t instanceof TextView) shelfTitle = ((TextView) t).getText().toString();
+            }
+        }
+        buildLocalRows();
+        if (shelfIndex < 0) return;
+        // Same shelf if it still exists, otherwise the one that moved into its place
+        ViewGroup target = null;
+        for (int i = 0; i < localRows.getChildCount(); i++) {
+            View t = ((ViewGroup) localRows.getChildAt(i)).getChildAt(0);
+            if (t instanceof TextView && ((TextView) t).getText().toString().equals(shelfTitle)) target = (ViewGroup) localRows.getChildAt(i);
+        }
+        if (target == null && localRows.getChildCount() > 0) {
+            target = (ViewGroup) localRows.getChildAt(Math.min(shelfIndex, localRows.getChildCount() - 1));
+            cardIndex = 0;
+        }
+        if (target == null) {
+            focusFirstCard();
+            return;
+        }
+        ViewGroup row = (ViewGroup) ((ViewGroup) target.getChildAt(1)).getChildAt(0);
+        if (row.getChildCount() == 0) return;
+        row.getChildAt(Math.min(cardIndex, row.getChildCount() - 1)).requestFocus();
+    }
 
     private void buildLocalRows() {
         localRows.removeAllViews();
