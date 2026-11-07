@@ -40,7 +40,7 @@ public class SplashActivity extends Activity {
         LinearLayout col = new LinearLayout(this);
         col.setOrientation(LinearLayout.VERTICAL);
         col.setGravity(Gravity.CENTER_HORIZONTAL);
-        root.addView(col, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER));
+        root.addView(col, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER));
 
         ImageView logo = new ImageView(this);
         try (InputStream in = getAssets().open("logo.png")) {
@@ -53,9 +53,11 @@ public class SplashActivity extends Activity {
 
         TextView name = Ui.title(this, "YM Player", 40);
         name.setPadding(0, Ui.dp(this, 30), 0, Ui.dp(this, 8));
-        col.addView(name);
+        name.setGravity(Gravity.CENTER);
+        col.addView(name, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         TextView by = Ui.medium(this, "Developed by Yousuf Miah", 18, Ui.TEXT2);
-        col.addView(by);
+        by.setGravity(Gravity.CENTER); // full width, so the whole credit always fits on one line
+        col.addView(by, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         setContentView(root);
 
