@@ -354,6 +354,12 @@ public class BrowseActivity extends Activity {
             }
             public void onNothingSelected(AdapterView<?> p) { Adapters.refresh(catList); }
         });
+        catList.setOnItemLongClickListener(new AdapterView.OnItemLongClickListener() {
+            public boolean onItemLongClick(AdapterView<?> p, View v, int pos, long id) {
+                toggleFavCategory(pos);
+                return true;
+            }
+        });
         catList.setOnItemClickListener(new AdapterView.OnItemClickListener() {
             public void onItemClick(AdapterView<?> p, View v, int pos, long id) {
                 Async.MAIN.removeCallbacks(pendingCat);
@@ -389,14 +395,9 @@ public class BrowseActivity extends Activity {
             public void done(List<Item> cats, Exception e) {
                 if (isFinishing()) return;
                 spinner.setVisibility(View.GONE);
-                List<Item> all = new ArrayList<>();
-                all.add(new Item(Item.CATEGORY, SEARCH, "Search"));
-                all.add(new Item(Item.CATEGORY, FAV, "Favourites"));
-                if (live) all.add(new Item(Item.CATEGORY, RECENT, "Recent Channels"));
-                else all.add(new Item(Item.CATEGORY, CONTINUE, "Continue Watching"));
-                all.add(new Item(Item.CATEGORY, ALL, live ? "All Channels" : "All"));
-                int firstReal = all.size();
-                if (cats != null) all.addAll(cats);
+                rawCats = cats == null ? new ArrayList<Item>() : cats;
+                List<Item> all = buildCategoryList();
+                int firstReal = 4;
                 catAdapter.set(all);
                 if (e != null) emptyText.setText("Couldn't load categories\n" + Async.message(e));
                 int start = !prefs.favs(type).isEmpty() ? 1
@@ -407,6 +408,52 @@ public class BrowseActivity extends Activity {
                 openCategory(all.get(start), start, false);
             }
         });
+    }
+
+    private List<Item> rawCats = new ArrayList<>();
+
+    /**
+     * Search, Favourites, Recent/Continue, All, then your favourite categories (♥) pinned
+     * together, then the rest of the provider's categories.
+     */
+    private List<Item> buildCategoryList() {
+        List<Item> all = new ArrayList<>();
+        all.add(new Item(Item.CATEGORY, SEARCH, "Search"));
+        all.add(new Item(Item.CATEGORY, FAV, live ? "Favourite Channels" : Item.MOVIE.equals(type) ? "Favourite Movies" : "Favourite Series"));
+        if (live) all.add(new Item(Item.CATEGORY, RECENT, "Recent Channels"));
+        else all.add(new Item(Item.CATEGORY, CONTINUE, "Continue Watching"));
+        all.add(new Item(Item.CATEGORY, ALL, live ? "All Channels" : "All"));
+        List<String> favIds = prefs.favCategories(type);
+        for (String id : favIds) {
+            for (Item c : rawCats) {
+                if (!c.id.equals(id)) continue;
+                Item pinned = new Item(Item.CATEGORY, c.id, c.name);
+                pinned.num = "♥";
+                all.add(pinned);
+            }
+        }
+        for (Item c : rawCats) if (!favIds.contains(c.id)) all.add(c);
+        return all;
+    }
+
+    /** ☰ or hold OK on a category: add it to / remove it from your favourite categories. */
+    private void toggleFavCategory(int pos) {
+        if (pos < 0 || pos >= catAdapter.getCount()) return;
+        Item c = catAdapter.getItem(pos);
+        if (c.id.startsWith("__")) return;
+        boolean now = prefs.toggleFavCategory(type, c.id);
+        android.widget.Toast.makeText(this, (now ? "Added to favourite categories — " : "Removed from favourite categories — ") + c.name,
+                android.widget.Toast.LENGTH_SHORT).show();
+        String activeId = currentCat == null ? null : currentCat.id;
+        List<Item> all = buildCategoryList();
+        catAdapter.set(all);
+        int sel = 0;
+        for (int i = 0; i < all.size(); i++) {
+            if (all.get(i).id.equals(c.id)) sel = i;
+            if (activeId != null && all.get(i).id.equals(activeId)) catAdapter.active = i;
+        }
+        catList.setSelection(sel);
+        Adapters.refresh(catList);
     }
 
     private void openSelectedCategory() {
@@ -593,6 +640,10 @@ public class BrowseActivity extends Activity {
 
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
+        if (keyCode == KeyEvent.KEYCODE_MENU && catList.hasFocus()) {
+            toggleFavCategory(catList.getSelectedItemPosition());
+            return true;
+        }
         if (keyCode == KeyEvent.KEYCODE_MENU && content.hasFocus()) {
             toggleFav(content.getSelectedItemPosition());
             return true;

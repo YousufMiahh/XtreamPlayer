@@ -306,6 +306,42 @@ public class Prefs {
         return !removed;
     }
 
+    // ================================================================ favourite categories (per account and section)
+
+    public List<String> favCategories(String type) {
+        List<String> out = new ArrayList<>();
+        try {
+            JSONArray a = new JSONArray(sp.getString(ns() + "favcat_" + type, "[]"));
+            for (int i = 0; i < a.length(); i++) out.add(a.getString(i));
+        } catch (Exception ignored) {
+        }
+        return out;
+    }
+
+    public boolean isFavCategory(String type, String id) { return favCategories(type).contains(id); }
+
+    /** @return true if the category is now a favourite. */
+    public boolean toggleFavCategory(String type, String id) {
+        List<String> l = favCategories(type);
+        boolean now = !l.remove(id);
+        if (now) l.add(id);
+        sp.edit().putString(ns() + "favcat_" + type, new JSONArray(l).toString()).apply();
+        return now;
+    }
+
+    // ================================================================ customise the home screen
+
+    /** Rows that can be switched on or off in Settings → Customise Home Screen (all on by default). */
+    public static final String[] HOME_KEYS = {"hero", "continue", "recent", "fav_live", "fav_movie", "fav_series",
+            "fav_cats", "top_movies", "top_series", "new_movies", "new_series"};
+    public static final String[] HOME_NAMES = {"Featured Title", "Continue Watching", "Recent Channels", "Favourite Channels",
+            "Favourite Movies", "Favourite Series", "Favourite Categories", "Top 10 Movies in the UK", "Top 10 Series in the UK",
+            "Recently Added Movies", "Recently Added Series"};
+
+    public boolean homeShows(String key) { return sp.getBoolean("home_" + key, true); }
+
+    public void setHomeShows(String key, boolean on) { sp.edit().putBoolean("home_" + key, on).apply(); }
+
     // ================================================================ resume positions (per account, ms)
 
     public long position(Item it) { return sp.getLong(ns() + "pos_" + it.key(), 0); }

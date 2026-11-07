@@ -152,6 +152,7 @@ public class HomeActivity extends Activity {
             buildLocalRows();
             buildRemoteRows();
             if (inLocal || getCurrentFocus() == null) focusFirstCard();
+            loadCategoryRows(); // favourite categories or Home settings may have changed
         }
         resumedOnce = true;
         TopBar.onHomeResumed(this, localRows, remoteRows, empty);
@@ -243,25 +244,34 @@ public class HomeActivity extends Activity {
 
     private void buildLocalRows() {
         localRows.removeAllViews();
-        List<Item> cw = prefs.continueWatching();
+        List<Item> cw = prefs.homeShows("continue") ? prefs.continueWatching() : new java.util.ArrayList<Item>();
         if (!cw.isEmpty()) {
             LinearLayout shelf = Cards.shelf(this, "Continue Watching", cw, Cards.Shape.LANDSCAPE, prefs, pick, removeMenu);
             ((TextView) shelf.getChildAt(0)).setText(Cards.titleWithMenuHint(this, "Continue Watching", "to remove from list"));
             localRows.addView(shelf);
         }
-        add(localRows, "Recent Channels", limit(prefs.history(true), 20), Cards.Shape.CHANNEL);
-        add(localRows, "Favourite Channels", prefs.favs(Item.LIVE), Cards.Shape.CHANNEL);
-        add(localRows, "Favourite Movies", prefs.favs(Item.MOVIE), Cards.Shape.POSTER);
-        add(localRows, "Favourite Series", prefs.favs(Item.SERIES), Cards.Shape.POSTER);
+        if (prefs.homeShows("recent")) add(localRows, "Recent Channels", limit(prefs.history(true), 20), Cards.Shape.CHANNEL);
+        if (prefs.homeShows("fav_live")) add(localRows, "Favourite Channels", prefs.favs(Item.LIVE), Cards.Shape.CHANNEL);
+        if (prefs.homeShows("fav_movie")) add(localRows, "Favourite Movies", prefs.favs(Item.MOVIE), Cards.Shape.POSTER);
+        if (prefs.homeShows("fav_series")) add(localRows, "Favourite Series", prefs.favs(Item.SERIES), Cards.Shape.POSTER);
         updateEmpty();
     }
 
     private void buildRemoteRows() {
         remoteRows.removeAllViews();
-        add(remoteRows, "Top 10 Movies on Netflix UK", topMovies, Cards.Shape.POSTER);
-        add(remoteRows, "Top 10 Series on Netflix UK", topSeries, Cards.Shape.POSTER);
-        if (newMovies != null) add(remoteRows, "Recently Added Movies", newMovies, Cards.Shape.POSTER);
-        if (newSeries != null) add(remoteRows, "Recently Added Series", newSeries, Cards.Shape.POSTER);
+        if (prefs.homeShows("fav_cats")) {
+            for (CatRow r : catRows) {
+                if (r.items.isEmpty()) continue;
+                final List<Item> rowItems = r.items;
+                remoteRows.addView(Cards.shelf(this, r.title, rowItems, r.shape, prefs, new Cards.OnPick() {
+                    public void pick(Item it, View card) { Open.item(HomeActivity.this, it, rowItems); }
+                }, favMenu));
+            }
+        }
+        if (prefs.homeShows("top_movies")) add(remoteRows, "Top 10 Movies on Netflix UK", topMovies, Cards.Shape.POSTER);
+        if (prefs.homeShows("top_series")) add(remoteRows, "Top 10 Series on Netflix UK", topSeries, Cards.Shape.POSTER);
+        if (newMovies != null && prefs.homeShows("new_movies")) add(remoteRows, "Recently Added Movies", newMovies, Cards.Shape.POSTER);
+        if (newSeries != null && prefs.homeShows("new_series")) add(remoteRows, "Recently Added Series", newSeries, Cards.Shape.POSTER);
         updateEmpty();
     }
 
@@ -280,7 +290,64 @@ public class HomeActivity extends Activity {
         return l.size() > n ? l.subList(0, n) : l;
     }
 
+    /** One row on Home for each favourite category (in each section). */
+    private static class CatRow {
+        String title;
+        List<Item> items;
+        Cards.Shape shape;
+    }
+
+    private List<CatRow> catRows = new java.util.ArrayList<>();
+    private String catSig = "";
+
+    private void loadCategoryRows() {
+        if (!prefs.homeShows("fav_cats")) {
+            if (!catRows.isEmpty()) {
+                catRows = new java.util.ArrayList<>();
+                catSig = "";
+                buildRemoteRows();
+            }
+            return;
+        }
+        Async.run(new Async.Work<List<CatRow>>() {
+            public List<CatRow> run() throws Exception {
+                List<CatRow> out = new java.util.ArrayList<>();
+                for (String t : new String[]{Item.LIVE, Item.MOVIE, Item.SERIES}) {
+                    List<String> ids = prefs.favCategories(t);
+                    if (ids.isEmpty()) continue;
+                    List<Item> cats = Repo.categories(api, t);
+                    for (String id : ids) {
+                        String name = null;
+                        for (Item c : cats) if (c.id.equals(id)) name = c.name;
+                        if (name == null) continue;
+                        List<Item> l = Repo.streams(api, t, id);
+                        CatRow r = new CatRow();
+                        r.title = name;
+                        r.items = l.size() > 40 ? new java.util.ArrayList<>(l.subList(0, 40)) : l;
+                        r.shape = Item.LIVE.equals(t) ? Cards.Shape.CHANNEL : Cards.Shape.POSTER;
+                        out.add(r);
+                    }
+                }
+                return out;
+            }
+        }, new Async.Done<List<CatRow>>() {
+            public void done(List<CatRow> r, Exception e) {
+                if (isFinishing() || r == null) return;
+                StringBuilder b = new StringBuilder();
+                for (CatRow c : r) b.append(c.title).append(c.items.size()).append('|');
+                if (b.toString().equals(catSig)) return; // nothing changed: keep focus where it is
+                catSig = b.toString();
+                catRows = r;
+                View f = getCurrentFocus();
+                boolean inRemote = f != null && isInside(f, remoteRows);
+                buildRemoteRows();
+                if (inRemote || getCurrentFocus() == null) focusFirstCard();
+            }
+        });
+    }
+
     private void loadNewArrivals() {
+        loadCategoryRows();
         Async.run(new Async.Work<List<Item>>() {
             public List<Item> run() throws Exception { return Repo.recentlyAdded(api, Item.MOVIE, 24); }
         }, new Async.Done<List<Item>>() {
