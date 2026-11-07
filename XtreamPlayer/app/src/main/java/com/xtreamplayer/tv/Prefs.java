@@ -333,9 +333,9 @@ public class Prefs {
 
     /** Rows that can be switched on or off in Settings → Customise Home Screen (all on by default). */
     public static final String[] HOME_KEYS = {"hero", "continue", "recent", "fav_live", "fav_movie", "fav_series",
-            "fav_cats", "top_movies", "top_series", "new_movies", "new_series"};
+            "top_movies", "top_series", "new_movies", "new_series"};
     public static final String[] HOME_NAMES = {"Featured Title", "Continue Watching", "Recent Channels", "Favourite Channels",
-            "Favourite Movies", "Favourite Series", "Favourite Categories", "Top 10 Movies in the UK", "Top 10 Series in the UK",
+            "Favourite Movies", "Favourite Series", "Top 10 Movies in the UK", "Top 10 Series in the UK",
             "Recently Added Movies", "Recently Added Series"};
 
     public boolean homeShows(String key) { return sp.getBoolean("home_" + key, true); }

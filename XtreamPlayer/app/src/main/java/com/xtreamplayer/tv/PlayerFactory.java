@@ -6,6 +6,7 @@ import android.content.Context;
 import androidx.media3.common.MediaItem;
 import androidx.media3.common.MimeTypes;
 import androidx.media3.datasource.DefaultHttpDataSource;
+import androidx.media3.exoplayer.DefaultLoadControl;
 import androidx.media3.exoplayer.DefaultRenderersFactory;
 import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
@@ -17,7 +18,13 @@ import androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory;
 public final class PlayerFactory {
     private PlayerFactory() {}
 
-    public static ExoPlayer create(Context c, Prefs prefs) {
+    public static ExoPlayer create(Context c, Prefs prefs) { return create(c, prefs, false); }
+
+    /**
+     * @param preview true for the small Live TV preview: starts showing the picture after
+     * 0.3 s of video instead of the usual 2.5 s (a stutter matters less there than a quick picture).
+     */
+    public static ExoPlayer create(Context c, Prefs prefs, boolean preview) {
         DefaultHttpDataSource.Factory http = new DefaultHttpDataSource.Factory()
                 .setUserAgent(prefs.userAgent())
                 .setAllowCrossProtocolRedirects(true)
@@ -28,7 +35,13 @@ public final class PlayerFactory {
                         | DefaultTsPayloadReaderFactory.FLAG_DETECT_ACCESS_UNITS);
         DefaultMediaSourceFactory sources = new DefaultMediaSourceFactory(http, extractors);
         DefaultRenderersFactory renderers = new DefaultRenderersFactory(c).setEnableDecoderFallback(true);
-        return new ExoPlayer.Builder(c, renderers).setMediaSourceFactory(sources).build();
+        ExoPlayer.Builder b = new ExoPlayer.Builder(c, renderers).setMediaSourceFactory(sources);
+        if (preview) {
+            b.setLoadControl(new DefaultLoadControl.Builder()
+                    .setBufferDurationsMs(1500, 8000, 300, 1000)
+                    .build());
+        }
+        return b.build();
     }
 
     public static MediaItem media(String url) {

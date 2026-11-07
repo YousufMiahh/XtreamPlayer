@@ -936,7 +936,7 @@ public class BrowseActivity extends Activity {
     private void schedulePreview() {
         Async.MAIN.removeCallbacks(pendingPreview);
         if (!live || prefs.previewMode() == 0) return;
-        Async.MAIN.postDelayed(pendingPreview, 1100); // only once you pause on a channel
+        Async.MAIN.postDelayed(pendingPreview, 450); // once you pause on a channel (not while scrolling past)
     }
 
     private void startPreview() {
@@ -953,7 +953,7 @@ public class BrowseActivity extends Activity {
         }
         if (it == previewItem && preview != null) return;
         if (preview == null) {
-            preview = PlayerFactory.create(this, prefs);
+            preview = PlayerFactory.create(this, prefs, true); // quick-start buffering
             preview.addListener(new Player.Listener() {
                 @Override
                 public void onRenderedFirstFrame() {
