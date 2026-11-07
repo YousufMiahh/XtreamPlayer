@@ -288,7 +288,7 @@ public class BrowseActivity extends Activity {
 
         // Hints at the bottom of the panel
         p.addView(new View(this), new LinearLayout.LayoutParams(1, 0, 1));
-        TextView hint = Ui.text(this, "▶  Bigger preview & TV guide      " + (Ui.hasMenuKey() ? "☰" : "Hold OK") + "  Favourite", 14, Ui.TEXT3);
+        TextView hint = Ui.text(this, "▶  TV guide      " + (Ui.hasMenuKey() ? "☰" : "Hold OK") + "  Favourite", 14, Ui.TEXT3);
         hint.setPadding(0, Ui.dp(this, 10), 0, 0);
         p.addView(hint);
         return pOuter;
@@ -683,8 +683,7 @@ public class BrowseActivity extends Activity {
         // Live TV: ▶ from the channel list = bigger preview, ▶ again = TV guide; ◀ steps back
         if (live && e.getAction() == KeyEvent.ACTION_DOWN && e.getRepeatCount() == 0 && content.hasFocus() && contentAdapter.getCount() > 0) {
             if (e.getKeyCode() == KeyEvent.KEYCODE_DPAD_RIGHT) {
-                if (mode == MODE_LIST) setMode(MODE_FOCUS);
-                else if (mode == MODE_FOCUS) enterGuide();
+                enterGuide(); // ▶ from the channel list goes straight to the TV guide
                 return true;
             }
             if (e.getKeyCode() == KeyEvent.KEYCODE_DPAD_LEFT && mode == MODE_FOCUS) {
@@ -866,7 +865,7 @@ public class BrowseActivity extends Activity {
     private void exitGuide() {
         int sel = guide.selected();
         int topRow = guide.firstVisible();
-        setMode(MODE_FOCUS);
+        setMode(MODE_LIST); // back to categories + channels + preview
         content.requestFocus();
         View first = content.getChildAt(0);
         int rowH = first == null ? 0 : first.getHeight() + ((ListView) content).getDividerHeight();

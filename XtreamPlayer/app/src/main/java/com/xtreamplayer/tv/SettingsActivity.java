@@ -102,7 +102,6 @@ public class SettingsActivity extends Activity {
         section("Customise Home Screen");
         for (int i = 0; i < Prefs.HOME_KEYS.length; i++) {
             final String key = Prefs.HOME_KEYS[i];
-            if (key.equals("hero")) continue; // the TV app has no featured title
             row(Prefs.HOME_NAMES[i], prefs.homeShows(key) ? "On" : "Off", new Action() {
                 public void run(TextView v) {
                     prefs.setHomeShows(key, !prefs.homeShows(key));

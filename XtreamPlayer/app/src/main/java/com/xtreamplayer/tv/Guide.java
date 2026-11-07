@@ -34,6 +34,29 @@ public final class Guide {
         return e == null ? null : e.list;
     }
 
+    /**
+     * Some providers' guides list overlapping or duplicate programmes (two sources merged),
+     * which drew on top of each other. Keep them in time order with no overlaps.
+     */
+    static List<XtreamApi.Programme> tidy(List<XtreamApi.Programme> in) {
+        List<XtreamApi.Programme> l = new ArrayList<>();
+        for (XtreamApi.Programme p : in) if (p.stop > p.start && p.start > 0) l.add(p);
+        java.util.Collections.sort(l, new java.util.Comparator<XtreamApi.Programme>() {
+            public int compare(XtreamApi.Programme a, XtreamApi.Programme b) {
+                return a.start != b.start ? Long.compare(a.start, b.start) : Long.compare(b.stop, a.stop);
+            }
+        });
+        List<XtreamApi.Programme> out = new ArrayList<>();
+        long end = 0;
+        for (XtreamApi.Programme p : l) {
+            if (p.stop <= end) continue;            // entirely inside the previous one: a duplicate
+            if (p.start < end) p.start = end;       // starts before the previous one ends: trim it
+            out.add(p);
+            end = p.stop;
+        }
+        return out;
+    }
+
     /** Loads listings for these channels (skipping fresh ones), calling done on the main thread as each arrives. */
     public static void load(final XtreamApi api, List<Item> channels, final Runnable done) {
         long now = System.currentTimeMillis();
@@ -49,7 +72,7 @@ public final class Guide {
         for (final Item it : todo) {
             POOL.execute(new Runnable() {
                 public void run() {
-                    List<XtreamApi.Programme> l = api.epg(it.id, AHEAD);
+                    List<XtreamApi.Programme> l = tidy(api.epg(it.id, AHEAD));
                     synchronized (Guide.class) {
                         Entry e = new Entry();
                         e.list = l;
