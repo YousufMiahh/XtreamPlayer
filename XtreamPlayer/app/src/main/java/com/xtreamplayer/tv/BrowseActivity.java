@@ -35,6 +35,23 @@ public class BrowseActivity extends Activity {
     private static final String ALL = "__all";
     private static final String RECENT = "__recent";
     private static final String CONTINUE = "__continue";
+    private static final String SEARCH = "__search";
+
+    // Live TV layout steps (▶ moves right through them, ◀ back)
+    private static final int MODE_LIST = 0, MODE_FOCUS = 1, MODE_GUIDE = 2;
+    private int mode = MODE_LIST;
+    private FrameLayout stage;
+    private View catBox, midBox, infoPanel, logoBoxView, textCol;
+    private TextView focusLabel;
+    private EpgGrid guide;
+    private Item guideChannel;
+    private XtreamApi.Programme guideProg;
+
+    // Search inside this section
+    private android.widget.EditText searchBox;
+    private List<Item> searchResults = new ArrayList<>();
+    private int searchToken;
+    private final Runnable pendingSearch = new Runnable() { public void run() { runSearch(); } };
 
     private String type;
     private Prefs prefs;
@@ -83,7 +100,13 @@ public class BrowseActivity extends Activity {
         cols.setOrientation(LinearLayout.HORIZONTAL);
         cols.setClipChildren(false);
         cols.setPadding(Ui.dp(this, 48), Ui.dp(this, 16), Ui.dp(this, 48), Ui.dp(this, 24));
-        root.addView(cols, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
+        if (live) { // Live TV: pieces are positioned by applyMode() so they can glide between layouts
+            stage = new FrameLayout(this);
+            stage.setClipChildren(false);
+            root.addView(stage, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
+        } else {
+            root.addView(cols, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
+        }
 
         // ---- categories
         catList = new ListView(this);
@@ -91,10 +114,15 @@ public class BrowseActivity extends Activity {
         catList.setDividerHeight(Ui.dp(this, 2));
         catList.setVerticalScrollBarEnabled(false);
         catList.setPadding(Ui.dp(this, 4), Ui.dp(this, 8), Ui.dp(this, 4), Ui.dp(this, 8));
-        Adapters.prepare(catList);
+        Adapters.prepare(catList, new View.OnFocusChangeListener() {
+            public void onFocusChange(View v, boolean has) {
+                if (has && live && mode != MODE_LIST) setMode(MODE_LIST); // categories always show the full layout
+            }
+        });
         catAdapter = new Adapters.TextRows(this);
         catAdapter.attach(catList);
-        cols.addView(Glider.wrap(this, catList, new Glider[1]), new LinearLayout.LayoutParams(Ui.dp(this, 300), ViewGroup.LayoutParams.MATCH_PARENT));
+        catBox = Glider.wrap(this, catList, new Glider[1]);
+        if (!live) cols.addView(catBox, new LinearLayout.LayoutParams(Ui.dp(this, 300), ViewGroup.LayoutParams.MATCH_PARENT));
 
         // ---- content column
         LinearLayout mid = new LinearLayout(this);
@@ -112,6 +140,16 @@ public class BrowseActivity extends Activity {
         head.setPadding(Ui.dp(this, 8), Ui.dp(this, 4), 0, Ui.dp(this, 14));
         head.setVisibility(View.GONE); // the highlighted category on the left already says where you are
         mid.addView(head);
+
+        // Search box (only while "Search" is the chosen category)
+        searchBox = Ui.input(this, live ? "Search all channels" : Item.MOVIE.equals(type) ? "Search all movies" : "Search all series",
+                android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+        searchBox.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH | android.view.inputmethod.EditorInfo.IME_FLAG_NO_EXTRACT_UI);
+        searchBox.setImeActionLabel("Search", android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH);
+        searchBox.setVisibility(View.GONE);
+        LinearLayout.LayoutParams sbl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        sbl.bottomMargin = Ui.dp(this, 14);
+        mid.addView(searchBox, sbl);
 
         FrameLayout contentFrame = new FrameLayout(this);
         contentFrame.setClipChildren(false);
@@ -151,12 +189,32 @@ public class BrowseActivity extends Activity {
         mid.addView(contentFrame, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
         content.setId(View.generateViewId());
 
-        cols.addView(mid, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1));
-
-        if (live) cols.addView(buildInfoPanel(), panelParams());
+        midBox = mid;
+        if (live) {
+            infoPanel = buildInfoPanel();
+            focusLabel = Ui.oneLine(Ui.medium(this, "", 16, Ui.TEXT2));
+            focusLabel.setGravity(Gravity.CENTER_VERTICAL);
+            focusLabel.setAlpha(0f);
+            guide = new EpgGrid(this);
+            guide.setVisibility(View.GONE);
+            guide.setListener(guideListener);
+            FrameLayout.LayoutParams z = new FrameLayout.LayoutParams(0, 0, Gravity.TOP | Gravity.START);
+            stage.addView(catBox, new FrameLayout.LayoutParams(z));
+            stage.addView(mid, new FrameLayout.LayoutParams(z));
+            stage.addView(infoPanel, new FrameLayout.LayoutParams(z));
+            stage.addView(focusLabel, new FrameLayout.LayoutParams(z));
+            stage.addView(guide, new FrameLayout.LayoutParams(z));
+            stage.addOnLayoutChangeListener(new View.OnLayoutChangeListener() {
+                public void onLayoutChange(View v, int l, int t, int r, int b, int ol, int ot, int or, int ob) {
+                    if (r - l != or - ol || b - t != ob - ot) stage.post(new Runnable() { public void run() { applyMode(false); } });
+                }
+            });
+        } else {
+            cols.addView(mid, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1));
+        }
 
         setContentView(root);
-        TopBar.animateIn(this, cols);
+        TopBar.animateIn(this, live ? stage : cols);
         wire();
         loadCategories();
     }
@@ -189,6 +247,13 @@ public class BrowseActivity extends Activity {
         infoLogo.setPadding(lp, lp, lp, lp);
         logoBox.addView(infoLogo, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         p.addView(logoBox, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(this, 194)));
+        logoBoxView = logoBox;
+        LinearLayout tc = new LinearLayout(this);
+        tc.setOrientation(LinearLayout.VERTICAL);
+        textCol = tc;
+        p.addView(tc, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
+        LinearLayout pOuter = p;
+        p = tc;
 
         infoName = Ui.lines(Ui.title(this, "", 26), 2);
         infoName.setPadding(0, Ui.dp(this, 22), 0, Ui.dp(this, 20));
@@ -221,23 +286,66 @@ public class BrowseActivity extends Activity {
         infoNext.setPadding(0, Ui.dp(this, 6), 0, 0);
         p.addView(infoNext);
 
-        // Push the button to the bottom of the panel
+        // Hints at the bottom of the panel
         p.addView(new View(this), new LinearLayout.LayoutParams(1, 0, 1));
-        infoFav = Ui.button(this, "♡  Add to Favourites");
-        infoFav.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, Ui.sp(this, 16));
-        infoFav.setOnClickListener(new View.OnClickListener() {
-            public void onClick(View v) {
-                int pos = content.getSelectedItemPosition();
-                toggleFav(pos);
-                updateFavButton();
+        TextView hint = Ui.text(this, "▶  Bigger preview & TV guide      " + (Ui.hasMenuKey() ? "☰" : "Hold OK") + "  Favourite", 14, Ui.TEXT3);
+        hint.setPadding(0, Ui.dp(this, 10), 0, 0);
+        p.addView(hint);
+        return pOuter;
+    }
+
+    private void wireSearch() {
+        searchBox.addTextChangedListener(new android.text.TextWatcher() {
+            public void beforeTextChanged(CharSequence x, int a, int b, int c) {}
+            public void onTextChanged(CharSequence x, int a, int b, int c) {}
+            public void afterTextChanged(android.text.Editable e) {
+                Async.MAIN.removeCallbacks(pendingSearch);
+                Async.MAIN.postDelayed(pendingSearch, 300);
             }
         });
-        infoFav.setNextFocusLeftId(content.getId());
-        p.addView(infoFav, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        return p;
+        searchBox.setOnEditorActionListener(new TextView.OnEditorActionListener() {
+            public boolean onEditorAction(TextView v, int action, KeyEvent e) {
+                if (e != null && e.getAction() != KeyEvent.ACTION_DOWN) return true;
+                Async.MAIN.removeCallbacks(pendingSearch);
+                runSearch();
+                hideKeyboard();
+                if (contentAdapter.getCount() > 0) {
+                    content.requestFocus();
+                    content.setSelection(0);
+                }
+                return true;
+            }
+        });
+    }
+
+    private void hideKeyboard() {
+        android.view.inputmethod.InputMethodManager imm = (android.view.inputmethod.InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
+        if (imm != null) imm.hideSoftInputFromWindow(searchBox.getWindowToken(), 0);
+    }
+
+    /** Searches everything in this section (not just the category), best matches first. */
+    private void runSearch() {
+        final String q = searchBox.getText().toString().trim();
+        final int t = ++searchToken;
+        if (new Match.Query(q).usable()) spinner.setVisibility(View.VISIBLE);
+        Async.run(new Async.Work<List<Item>>() {
+            public List<Item> run() throws Exception {
+                if (!new Match.Query(q).usable()) return new ArrayList<>();
+                List<Item> all = Repo.streams(api, type, null);
+                return t != searchToken ? null : Match.rank(all, q, 300, null);
+            }
+        }, new Async.Done<List<Item>>() {
+            public void done(List<Item> r, Exception e) {
+                if (isFinishing() || t != searchToken || r == null) return;
+                spinner.setVisibility(View.GONE);
+                searchResults = r;
+                if (currentCat != null && SEARCH.equals(currentCat.id)) show(r, false);
+            }
+        });
     }
 
     private void wire() {
+        wireSearch();
         catList.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             public void onItemSelected(AdapterView<?> p, View v, int pos, long id) {
                 Adapters.refresh(catList);
@@ -282,6 +390,7 @@ public class BrowseActivity extends Activity {
                 if (isFinishing()) return;
                 spinner.setVisibility(View.GONE);
                 List<Item> all = new ArrayList<>();
+                all.add(new Item(Item.CATEGORY, SEARCH, "Search"));
                 all.add(new Item(Item.CATEGORY, FAV, "Favourites"));
                 if (live) all.add(new Item(Item.CATEGORY, RECENT, "Recent Channels"));
                 else all.add(new Item(Item.CATEGORY, CONTINUE, "Continue Watching"));
@@ -290,8 +399,8 @@ public class BrowseActivity extends Activity {
                 if (cats != null) all.addAll(cats);
                 catAdapter.set(all);
                 if (e != null) emptyText.setText("Couldn't load categories\n" + Async.message(e));
-                int start = !prefs.favs(type).isEmpty() ? 0
-                        : !specialList(all.get(1).id).isEmpty() ? 1
+                int start = !prefs.favs(type).isEmpty() ? 1
+                        : !specialList(all.get(2).id).isEmpty() ? 2
                         : (all.size() > firstReal ? firstReal : firstReal - 1);
                 if (!TopBar.tabFocused(BrowseActivity.this)) catList.requestFocus();
                 catList.setSelection(start);
@@ -319,6 +428,17 @@ public class BrowseActivity extends Activity {
         header.setText(cat.name);
         count.setText("");
         final int token = ++loadToken;
+        boolean searching = SEARCH.equals(cat.id);
+        searchBox.setVisibility(searching ? View.VISIBLE : View.GONE);
+        if (searching) {
+            show(searchResults, false);
+            if (focusContent) { // OK on "Search": straight into the box with the keyboard
+                searchBox.requestFocus();
+                android.view.inputmethod.InputMethodManager imm = (android.view.inputmethod.InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
+                if (imm != null) imm.showSoftInput(searchBox, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT);
+            }
+            return;
+        }
         if (isSpecial(cat.id)) {
             show(specialList(cat.id), focusContent);
             return;
@@ -361,9 +481,13 @@ public class BrowseActivity extends Activity {
         count.animate().alpha(1f).setStartDelay(80).setDuration(300).start();
         count.setText(list.size() == 1 ? "1 item" : list.size() + " items");
         boolean fav = currentCat != null && FAV.equals(currentCat.id);
+        boolean searching = currentCat != null && SEARCH.equals(currentCat.id);
+        String q = searchBox.getText().toString().trim();
         emptyText.setText(list.isEmpty()
-                ? (fav ? (Ui.hasMenuKey() ? "No favourites yet\nPress ☰ or hold OK on anything to add it." : "No favourites yet\nHold OK on anything to add it.") : "Nothing here yet")
-                : "");
+                ? (searching ? (q.length() < 2 ? "Type the name of a " + (live ? "channel" : Item.MOVIE.equals(type) ? "film" : "series")
+                        : "No results for \"" + q + "\"")
+                : (fav ? (Ui.hasMenuKey() ? "No favourites yet\nPress ☰ or hold OK on anything to add it." : "No favourites yet\nHold OK on anything to add it.") : "Nothing here yet")
+                ) : "");
         if (live) showChannelInfo(list.isEmpty() ? -1 : 0);
         if (focusContent && !list.isEmpty()) {
             content.requestFocus();
@@ -478,6 +602,19 @@ public class BrowseActivity extends Activity {
 
     @Override
     public void onBackPressed() {
+        if (live && guide.hasFocus()) {
+            exitGuide();
+            return;
+        }
+        if (live && mode == MODE_FOCUS && content.hasFocus()) {
+            setMode(MODE_LIST);
+            return;
+        }
+        if (searchBox.hasFocus()) { // close the keyboard and go back to the categories
+            hideKeyboard();
+            backToCategories();
+            return;
+        }
         if (content.hasFocus()) {
             backToCategories();
             return;
@@ -492,6 +629,18 @@ public class BrowseActivity extends Activity {
      */
     @Override
     public boolean dispatchKeyEvent(KeyEvent e) {
+        // Live TV: ▶ from the channel list = bigger preview, ▶ again = TV guide; ◀ steps back
+        if (live && e.getAction() == KeyEvent.ACTION_DOWN && e.getRepeatCount() == 0 && content.hasFocus() && contentAdapter.getCount() > 0) {
+            if (e.getKeyCode() == KeyEvent.KEYCODE_DPAD_RIGHT) {
+                if (mode == MODE_LIST) setMode(MODE_FOCUS);
+                else if (mode == MODE_FOCUS) enterGuide();
+                return true;
+            }
+            if (e.getKeyCode() == KeyEvent.KEYCODE_DPAD_LEFT && mode == MODE_FOCUS) {
+                setMode(MODE_LIST);
+                return true;
+            }
+        }
         if (e.getAction() == KeyEvent.ACTION_DOWN && e.getKeyCode() == KeyEvent.KEYCODE_DPAD_LEFT && content.hasFocus()) {
             int pos = content.getSelectedItemPosition();
             boolean firstColumn = !(content instanceof GridView)
@@ -526,7 +675,8 @@ public class BrowseActivity extends Activity {
         } else {
             contentAdapter.notifyDataSetChanged();
         }
-        if (live && content.hasFocus()) schedulePreview();
+        if (live && (content.hasFocus() || guide.hasFocus())) schedulePreview();
+        if (live && guide.getVisibility() == View.VISIBLE) guide.listingsChanged();
     }
 
     @Override
@@ -547,6 +697,189 @@ public class BrowseActivity extends Activity {
         return new ArrayList<>();
     }
 
+    // ------------------------------------------------------------ Live TV layouts and guide
+
+    private void setMode(int m) {
+        if (m == mode) return;
+        mode = m;
+        applyMode(true);
+    }
+
+    /**
+     * Positions the pieces for the current step. Bounds changes glide (preview moving to the
+     * top, categories folding away to the left, guide sliding over the list).
+     */
+    private void applyMode(boolean animate) {
+        if (stage == null || stage.getWidth() == 0) return;
+        int W = stage.getWidth(), H = stage.getHeight();
+        int pad = Ui.dp(this, 48), gap = Ui.dp(this, 36), top = Ui.dp(this, 16), bottom = Ui.dp(this, 24);
+        int catW = Ui.dp(this, 300), infoW = Ui.dp(this, 400), fullH = H - top - bottom;
+        if (animate) {
+            android.transition.ChangeBounds cb = new android.transition.ChangeBounds();
+            cb.setDuration(420);
+            cb.setInterpolator(new android.view.animation.DecelerateInterpolator(2.2f));
+            cb.addListener(new android.transition.TransitionListenerAdapter() {
+                @Override public void onTransitionEnd(android.transition.Transition t) {
+                    Adapters.refresh(content); // re-seat the gliding highlights
+                    Adapters.refresh(catList);
+                }
+            });
+            android.transition.TransitionManager.beginDelayedTransition(stage, cb);
+        }
+        LinearLayout info = (LinearLayout) infoPanel;
+        LinearLayout.LayoutParams logoLp = (LinearLayout.LayoutParams) logoBoxView.getLayoutParams();
+        LinearLayout.LayoutParams textLp = (LinearLayout.LayoutParams) textCol.getLayoutParams();
+        if (mode == MODE_LIST) {
+            place(catBox, pad, top, catW, fullH);
+            place(midBox, pad + catW + gap, top, W - 2 * pad - catW - infoW - 2 * gap, fullH);
+            place(infoPanel, W - pad - infoW, top, infoW, fullH);
+            place(focusLabel, pad, top, W - 2 * pad, Ui.dp(this, 44));
+            place(guide, pad, top, W - 2 * pad, fullH);
+            info.setOrientation(LinearLayout.VERTICAL);
+            logoLp.width = ViewGroup.LayoutParams.MATCH_PARENT;
+            logoLp.height = Ui.dp(this, 194);
+            textLp.width = ViewGroup.LayoutParams.MATCH_PARENT;
+            textLp.height = 0;
+            textLp.weight = 1;
+            textLp.leftMargin = 0;
+            fade(catBox, true);
+            fade(focusLabel, false);
+            fade(midBox, true);
+            fade(guide, false);
+        } else {
+            int infoH = Math.round(H * 0.38f);
+            int inner = infoH - 2 * Ui.dp(this, 28);
+            int labelH = guide.headerHeight();
+            int listY = top + infoH + Ui.dp(this, 12);
+            place(catBox, pad - catW - gap, top, catW, fullH); // folds away off the left edge
+            place(infoPanel, pad, top, W - 2 * pad, infoH);
+            place(focusLabel, pad + Ui.dp(this, 8), listY, W - 2 * pad, labelH);
+            place(midBox, pad, listY + labelH, W - 2 * pad, H - listY - labelH - bottom);
+            place(guide, pad, listY, W - 2 * pad, H - listY - bottom);
+            info.setOrientation(LinearLayout.HORIZONTAL);
+            logoLp.width = Math.round(inner * 16f / 9f);
+            logoLp.height = ViewGroup.LayoutParams.MATCH_PARENT;
+            textLp.width = 0;
+            textLp.height = ViewGroup.LayoutParams.MATCH_PARENT;
+            textLp.weight = 1;
+            textLp.leftMargin = Ui.dp(this, 32);
+            fade(catBox, false);
+            boolean g = mode == MODE_GUIDE;
+            fade(focusLabel, !g);
+            fade(midBox, !g);
+            fade(guide, g);
+            focusLabel.setText((currentCat == null ? "" : currentCat.name + "      ") + "◀  Categories      ▶  TV Guide");
+        }
+        logoBoxView.setLayoutParams(logoLp);
+        textCol.setLayoutParams(textLp);
+        info.requestLayout();
+    }
+
+    private void place(View v, int x, int y, int w, int h) {
+        FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) v.getLayoutParams();
+        lp.leftMargin = x;
+        lp.topMargin = y;
+        lp.width = Math.max(0, w);
+        lp.height = Math.max(0, h);
+        v.setLayoutParams(lp);
+    }
+
+    private void fade(final View v, final boolean show) {
+        v.animate().cancel();
+        if (show) {
+            if (v.getVisibility() != View.VISIBLE) {
+                v.setAlpha(0f);
+                v.setVisibility(View.VISIBLE);
+            }
+            v.animate().alpha(1f).setDuration(320).withEndAction(null).start();
+        } else if (v.getVisibility() == View.VISIBLE) {
+            v.animate().alpha(0f).setDuration(220).withEndAction(new Runnable() {
+                public void run() { if (v.getAlpha() == 0f) v.setVisibility(v == midBox || v == catBox ? View.INVISIBLE : View.GONE); }
+            }).start();
+        }
+    }
+
+    /** The channel list becomes the TV guide, lined up row for row. */
+    private void enterGuide() {
+        int sel = Math.max(0, content.getSelectedItemPosition());
+        View first = content.getChildAt(0);
+        int rowH = first == null ? 0 : first.getHeight() + ((ListView) content).getDividerHeight();
+        guideChannel = null;
+        guideProg = null;
+        guide.setChannels(contentAdapter.items(), sel, content.getFirstVisiblePosition(), rowH);
+        setMode(MODE_GUIDE);
+        guide.setVisibility(View.VISIBLE);
+        guide.requestFocus();
+    }
+
+    private void exitGuide() {
+        int sel = guide.selected();
+        int topRow = guide.firstVisible();
+        setMode(MODE_FOCUS);
+        content.requestFocus();
+        View first = content.getChildAt(0);
+        int rowH = first == null ? 0 : first.getHeight() + ((ListView) content).getDividerHeight();
+        ((ListView) content).setSelectionFromTop(sel, Math.max(0, (sel - topRow) * rowH));
+        showChannelInfo(sel);
+    }
+
+    private final EpgGrid.Listener guideListener = new EpgGrid.Listener() {
+        public void onHighlight(int row, Item ch, XtreamApi.Programme p) {
+            boolean newChannel = ch != guideChannel;
+            if (!newChannel && p == guideProg) return;
+            guideChannel = ch;
+            guideProg = p;
+            infoName.setText(ch.name);
+            infoProgress.removeAllViews();
+            if (p == null) {
+                infoNowTitle.setText(Guide.get(ch.id) == null ? "Loading guide…" : "No guide information");
+                infoNowTitle.setTextColor(Ui.TEXT2);
+                infoNowTime.setText("");
+                infoDesc.setText("");
+                infoNext.setText("");
+            } else {
+                long now = System.currentTimeMillis() / 1000L;
+                boolean onNow = p.start <= now && now < p.stop;
+                infoNowTitle.setTextColor(Ui.TEXT);
+                infoNowTitle.setText(p.title);
+                infoNowTime.setText(p.timeRange() + (onNow ? "" : "   ·   later"));
+                if (onNow) infoProgress.addView(Cards.progressBar(BrowseActivity.this, p.progress()),
+                        new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+                infoDesc.setText(p.desc == null ? "" : p.desc);
+                infoNext.setText("");
+                List<XtreamApi.Programme> l = Guide.get(ch.id);
+                if (l != null) {
+                    for (int i = 0; i < l.size() - 1; i++) {
+                        if (l.get(i) == p) {
+                            XtreamApi.Programme n = l.get(i + 1);
+                            String t = n.timeRange();
+                            infoNext.setText((t.isEmpty() ? "" : t.substring(0, Math.min(5, t.length())) + "   ") + n.title);
+                        }
+                    }
+                }
+            }
+            if (newChannel) {
+                ImageLoader.load(infoLogo, ch.icon, 400, 240);
+                Ambient.tint(BrowseActivity.this, ch.icon);
+                stopPreview();
+                schedulePreview();
+            }
+        }
+
+        public void onPlay(int row) {
+            List<Item> l = contentAdapter.items();
+            if (row >= 0 && row < l.size()) Open.item(BrowseActivity.this, l.get(row), l);
+        }
+
+        public void onExit() { exitGuide(); }
+
+        public void onNeedListings(List<Item> channels) {
+            Guide.load(api, channels, new Runnable() {
+                public void run() { if (!isFinishing()) guide.listingsChanged(); }
+            });
+        }
+    };
+
     // ------------------------------------------------------------ live preview
 
     private void schedulePreview() {
@@ -556,10 +889,17 @@ public class BrowseActivity extends Activity {
     }
 
     private void startPreview() {
-        if (!resumed || !content.hasFocus()) return;
-        int pos = content.getSelectedItemPosition();
-        if (pos < 0 || pos >= contentAdapter.getCount()) return;
-        Item it = contentAdapter.getItem(pos);
+        boolean inGuide = guide != null && guide.hasFocus();
+        if (!resumed || !(content.hasFocus() || inGuide)) return;
+        Item it;
+        if (inGuide) {
+            it = guideChannel;
+            if (it == null) return;
+        } else {
+            int pos = content.getSelectedItemPosition();
+            if (pos < 0 || pos >= contentAdapter.getCount()) return;
+            it = contentAdapter.getItem(pos);
+        }
         if (it == previewItem && preview != null) return;
         if (preview == null) {
             preview = PlayerFactory.create(this, prefs);
@@ -609,6 +949,7 @@ public class BrowseActivity extends Activity {
     protected void onDestroy() {
         Async.MAIN.removeCallbacks(pendingCat);
         Async.MAIN.removeCallbacks(pendingEpg);
+        Async.MAIN.removeCallbacks(pendingSearch);
         releasePreview();
         super.onDestroy();
     }

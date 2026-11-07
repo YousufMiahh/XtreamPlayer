@@ -27,6 +27,7 @@ public class Item {
     public String duration;
 
     private String lower, compact;
+    private String[] words;
 
     /** Lower-cased name, computed once (makes searching big libraries fast). */
     public String lower() {
@@ -38,6 +39,19 @@ public class Item {
     public String compact() {
         if (compact == null) compact = squash(name);
         return compact;
+    }
+
+    /** The name's words, folded and squashed: "UK: Premier Sports 1" → [uk, premier, sports, 1]. Computed once. */
+    public String[] words() {
+        if (words == null) {
+            java.util.List<String> w = new java.util.ArrayList<>();
+            for (String part : fold(name).split("[^\\p{L}\\p{N}]+")) {
+                String sq = squash(part);
+                if (!sq.isEmpty()) w.add(sq);
+            }
+            words = w.toArray(new String[0]);
+        }
+        return words;
     }
 
     /** True if some word in the name starts with this (already squashed) text, e.g. "spider" in "UK: Spider-Man". */
@@ -64,7 +78,7 @@ public class Item {
             char ch = s.charAt(i);
             if (ch > 127) { ascii = false; break; }
         }
-        String src = ascii ? s : java.text.Normalizer.normalize(s, java.text.Normalizer.Form.NFD);
+        String src = ascii ? s : java.text.Normalizer.normalize(s, java.text.Normalizer.Form.NFKD);
         for (int i = 0; i < src.length(); i++) {
             char ch = src.charAt(i);
             if (Character.isLetterOrDigit(ch)) b.append(Character.toLowerCase(ch));
@@ -74,7 +88,7 @@ public class Item {
 
     /** Lower-case and strip accents (é → e); keeps spaces and punctuation. */
     public static String fold(String s) {
-        String n = java.text.Normalizer.normalize(s.toLowerCase(java.util.Locale.UK), java.text.Normalizer.Form.NFD);
+        String n = java.text.Normalizer.normalize(s.toLowerCase(java.util.Locale.UK), java.text.Normalizer.Form.NFKD);
         StringBuilder b = new StringBuilder(n.length());
         for (int i = 0; i < n.length(); i++) {
             char ch = n.charAt(i);

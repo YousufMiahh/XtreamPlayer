@@ -104,6 +104,63 @@ public final class Cards {
         return bar;
     }
 
+    /** A titled grid of cards that fills the width of the screen (search filtered to one type). */
+    public static LinearLayout grid(final Context c, String title, final List<Item> items, final Shape shape,
+                                    final Prefs prefs, final OnPick pick, final OnMenu menu) {
+        LinearLayout box = new LinearLayout(c);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setClipChildren(false);
+        box.setClipToPadding(false);
+        TextView h = Ui.text(c, title, 22, Ui.TEXT2);
+        h.setTypeface(Ui.semibold());
+        h.setPadding(Ui.dp(c, 64), Ui.dp(c, 18), 0, Ui.dp(c, 6));
+        box.addView(h);
+        int cardW = shape == Shape.POSTER ? Ui.dp(c, 160) : shape == Shape.CHANNEL ? Ui.dp(c, 220) : Ui.dp(c, 300);
+        int gap = Ui.dp(c, 32);
+        int usable = c.getResources().getDisplayMetrics().widthPixels - Ui.dp(c, 128);
+        int cols = Math.max(1, (usable + gap) / (cardW + gap));
+        LinearLayout row = null;
+        for (int i = 0; i < items.size(); i++) {
+            if (i % cols == 0) {
+                row = new LinearLayout(c);
+                row.setOrientation(LinearLayout.HORIZONTAL);
+                row.setClipChildren(false);
+                row.setClipToPadding(false);
+                row.setPadding(Ui.dp(c, 64), Ui.dp(c, 16), Ui.dp(c, 64), Ui.dp(c, 4));
+                box.addView(row);
+            }
+            final Item it = items.get(i);
+            LinearLayout card = card(c, shape, it.icon, it.name, null, 0);
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            lp.rightMargin = gap;
+            row.addView(card, lp);
+            wire(card, it, pick, menu);
+        }
+        return box;
+    }
+
+    private static void wire(View card, final Item it, final OnPick pick, final OnMenu menu) {
+        card.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) { pick.pick(it, v); }
+        });
+        if (menu == null) return;
+        card.setOnLongClickListener(new View.OnLongClickListener() {
+            public boolean onLongClick(View v) {
+                menu.menu(it, v);
+                return true;
+            }
+        });
+        card.setOnKeyListener(new View.OnKeyListener() {
+            public boolean onKey(View v, int code, KeyEvent e) {
+                if (code == KeyEvent.KEYCODE_MENU && e.getAction() == KeyEvent.ACTION_DOWN) {
+                    menu.menu(it, v);
+                    return true;
+                }
+                return false;
+            }
+        });
+    }
+
     /** A titled horizontal shelf of cards. */
     public static LinearLayout shelf(final Context c, String title, final List<Item> items, final Shape shape,
                                      final Prefs prefs, final OnPick pick, final OnMenu menu) {

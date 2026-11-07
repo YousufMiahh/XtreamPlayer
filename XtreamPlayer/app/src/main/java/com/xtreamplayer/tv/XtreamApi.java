@@ -169,10 +169,13 @@ public class XtreamApi {
     }
 
     /** Current and upcoming programmes (may be empty). */
-    public List<Programme> epg(String streamId) {
+    public List<Programme> epg(String streamId) { return epg(streamId, 6); }
+
+    /** @param limit how many programmes ahead (the TV guide asks for more). */
+    public List<Programme> epg(String streamId, int limit) {
         List<Programme> out = new ArrayList<>();
         try {
-            String body = Http.string(api("get_short_epg", "&stream_id=" + Uri.encode(streamId) + "&limit=6"), ua);
+            String body = Http.string(api("get_short_epg", "&stream_id=" + Uri.encode(streamId) + "&limit=" + limit), ua);
             JSONObject o = new JSONObject(body);
             JSONArray a = o.optJSONArray("epg_listings");
             if (a == null) return out;

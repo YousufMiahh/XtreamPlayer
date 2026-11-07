@@ -38,6 +38,11 @@ public class SearchActivity extends Activity implements TopBar.Reselect {
     private final int[] found = new int[3];
     private volatile int token;
     private final Runnable pending = new Runnable() { public void run() { search(); } };
+    /** 0 = All, 1 = Live TV, 2 = Movies, 3 = Series. */
+    private int filter;
+    private final TextView[] chips = new TextView[4];
+    private static final String[] CHIP_NAMES = {"All", "Live TV", "Movies", "Series"};
+    private static final int GRID_MAX = 120;
 
     @Override
     protected void onCreate(Bundle b) {
@@ -65,6 +70,31 @@ public class SearchActivity extends Activity implements TopBar.Reselect {
         blp.topMargin = Ui.dp(this, 28);
         col.addView(box, blp);
 
+        // All | Live TV | Movies | Series
+        LinearLayout chipRow = new LinearLayout(this);
+        chipRow.setGravity(Gravity.CENTER_HORIZONTAL);
+        chipRow.setClipChildren(false);
+        chipRow.setClipToPadding(false);
+        chipRow.setPadding(0, Ui.dp(this, 20), 0, Ui.dp(this, 4));
+        for (int i = 0; i < 4; i++) {
+            final int f = i;
+            chips[i] = Ui.medium(this, CHIP_NAMES[i], 18, Ui.TEXT);
+            chips[i].setFocusable(true);
+            int px = Ui.dp(this, 24), py = Ui.dp(this, 11);
+            chips[i].setPadding(px, py, px, py);
+            chips[i].setOnFocusChangeListener(new View.OnFocusChangeListener() {
+                public void onFocusChange(View v, boolean has) { Ui.animateFocus(v, has, 1.06f); }
+            });
+            chips[i].setOnClickListener(new View.OnClickListener() {
+                public void onClick(View v) { setFilter(f); }
+            });
+            LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            clp.leftMargin = clp.rightMargin = Ui.dp(this, 6);
+            chipRow.addView(chips[i], clp);
+        }
+        col.addView(chipRow, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        paintChips();
+
         status = Ui.text(this, "", 17, Ui.TEXT2);
         status.setGravity(Gravity.CENTER);
         status.setPadding(0, Ui.dp(this, 18), 0, 0);
@@ -78,7 +108,7 @@ public class SearchActivity extends Activity implements TopBar.Reselect {
         }
         scroll.addView(col);
         setContentView(scroll);
-        TopBar.animateIn(this, box, status, slots[0], slots[1], slots[2]);
+        TopBar.animateIn(this, box, chipRow, status, slots[0], slots[1], slots[2]);
 
         box.addTextChangedListener(new TextWatcher() {
             public void beforeTextChanged(CharSequence s, int a, int b, int c) {}
@@ -153,11 +183,30 @@ public class SearchActivity extends Activity implements TopBar.Reselect {
         return box.getText().toString().trim().toLowerCase(Locale.UK);
     }
 
+    private void paintChips() {
+        for (int i = 0; i < 4; i++) {
+            boolean on = i == filter;
+            chips[i].setBackground(Ui.pill(this, on ? Ui.SURFACE_HI : 0, 22));
+            chips[i].setTextColor(Ui.focusText(on ? Ui.TEXT : Ui.TEXT2));
+            chips[i].setTypeface(on ? Ui.semibold() : Ui.medium());
+        }
+    }
+
+    /** Pick All / Live TV / Movies / Series. One type shows its results as a full-width grid. */
+    private void setFilter(int f) {
+        if (f == filter) return;
+        filter = f;
+        paintChips();
+        search();
+    }
+
+    private boolean shows(int slot) { return filter == 0 || filter == slot + 1; }
+
     private void search() {
         token++;
         for (int i = 0; i < 3; i++) {
             found[i] = 0;
-            if (query().length() < 2) slots[i].removeAllViews();
+            if (query().length() < 2 || !shows(i)) slots[i].removeAllViews();
             else if (ready[i]) searchSlot(i, query(), token);
         }
         updateStatus();
@@ -177,7 +226,9 @@ public class SearchActivity extends Activity implements TopBar.Reselect {
 
     /** Matches in the background, then swaps that section's row. Stale results are dropped. */
     private void searchSlot(final int slot, final String q, final int t) {
-        if (q.length() < 2) return;
+        if (q.length() < 2 || !shows(slot)) return;
+        final boolean asGrid = filter != 0;
+        final int max = asGrid ? GRID_MAX : MAX;
         final List<Item> all = Repo.cached(TYPES[slot], null);
         if (all == null) return;
         Async.runOn(MATCHER, new Async.Work<List<Item>>() {
@@ -185,31 +236,7 @@ public class SearchActivity extends Activity implements TopBar.Reselect {
                 // Ignore punctuation, spaces and accents: "spiderman", "spider man" and "spiderm"
                 // all find "Spider-Man". Several words match in any order ("man spider").
                 if (t != token) return null; // you've typed more since: skip this one
-                String qc = Item.squash(q);
-                List<String> words = new ArrayList<>();
-                for (String w : q.split("\\s+")) {
-                    String sw = Item.squash(w);
-                    if (!sw.isEmpty()) words.add(sw);
-                }
-                List<Item> starts = new ArrayList<>(), contains = new ArrayList<>();
-                if (qc.length() < 2 || words.isEmpty()) return starts;
-                int n = 0;
-                for (Item it : all) {
-                    if ((++n & 1023) == 0 && t != token) return null; // stop early if outdated
-                    String c = it.compact();
-                    boolean hit = c.contains(qc);
-                    if (!hit && words.size() > 1) {
-                        hit = true;
-                        for (String w : words) if (!c.contains(w)) { hit = false; break; }
-                    }
-                    if (!hit) continue;
-                    // A title (or any word in it, e.g. after "UK:") starting with the search ranks first
-                    if (c.startsWith(qc) || it.wordStartsWith(words.get(0))) starts.add(it);
-                    else if (contains.size() < MAX) contains.add(it);
-                    if (starts.size() >= MAX) break;
-                }
-                starts.addAll(contains); // names that start with the search come first
-                return starts.size() > MAX ? new ArrayList<>(starts.subList(0, MAX)) : starts;
+                return Match.rank(all, q, max, null); // best matches first (see Match)
             }
         }, new Async.Done<List<Item>>() {
             public void done(final List<Item> hits, Exception e) {
@@ -219,7 +246,15 @@ public class SearchActivity extends Activity implements TopBar.Reselect {
                 found[slot] = hits.size();
                 if (!hits.isEmpty()) {
                     Cards.Shape shape = slot == 0 ? Cards.Shape.CHANNEL : Cards.Shape.POSTER;
-                    slots[slot].addView(Cards.shelf(SearchActivity.this, TITLES[slot] + "  ·  " + hits.size() + (hits.size() >= MAX ? "+" : ""),
+                    String heading = TITLES[slot] + "  ·  " + hits.size() + (hits.size() >= max ? "+" : "");
+                    Cards.OnPick onPick = new Cards.OnPick() {
+                        public void pick(Item it, View card) { Open.item(SearchActivity.this, it, hits); }
+                    };
+                    Cards.OnMenu onMenu = new Cards.OnMenu() {
+                        public void menu(Item it, View card) { Open.toggleFav(SearchActivity.this, prefs, it); }
+                    };
+                    if (asGrid) slots[slot].addView(Cards.grid(SearchActivity.this, heading, hits, shape, prefs, onPick, onMenu));
+                    else slots[slot].addView(Cards.shelf(SearchActivity.this, heading,
                             hits, shape, prefs,
                             new Cards.OnPick() {
                                 public void pick(Item it, View card) { Open.item(SearchActivity.this, it, hits); }

@@ -85,6 +85,28 @@ public final class ImageLoader {
         return 0xFF3A3F52;
     }
 
+    /** Already-loaded image, or null (the TV guide draws channel logos from here). */
+    public static Bitmap cached(String url) {
+        return url == null ? null : CACHE.get(url);
+    }
+
+    /** Loads an image into the cache without a view, then runs done on the main thread. */
+    public static void prefetch(final String url, final int reqW, final int reqH, final Runnable done) {
+        if (url == null || url.isEmpty() || FAILED.contains(url) || CACHE.get(url) != null) return;
+        POOL.execute(new Runnable() {
+            public void run() {
+                if (CACHE.get(url) != null) return;
+                Bitmap bm = fetch(url, reqW, reqH);
+                if (bm == null) {
+                    FAILED.add(url);
+                    return;
+                }
+                CACHE.put(url, bm);
+                if (done != null) Async.MAIN.post(done);
+            }
+        });
+    }
+
     public static void load(final ImageView view, final String url, final int reqW, final int reqH) {
         view.setTag(url);
         if (url == null || url.isEmpty() || FAILED.contains(url)) {
