@@ -246,7 +246,7 @@ public class Prefs {
     public void setDarkTheme(boolean b) { sp.edit().putBoolean("dark", b).apply(); }
 
     /** 0 off, 1 on (muted), 2 on with sound. */
-    public int previewMode() { return sp.getInt("preview", 1); }
+    public int previewMode() { return sp.getInt("preview", 2); } // on with sound unless changed in Settings
     public void setPreviewMode(int m) { sp.edit().putInt("preview", m).apply(); }
 
     /** Hours between automatic library refreshes: 0 = every launch, -1 = manual only. */

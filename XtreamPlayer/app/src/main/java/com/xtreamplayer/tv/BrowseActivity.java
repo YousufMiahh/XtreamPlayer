@@ -169,7 +169,8 @@ public class BrowseActivity extends Activity {
         }
         Adapters.prepare(content, new View.OnFocusChangeListener() {
             public void onFocusChange(View v, boolean has) {
-                if (!has) stopPreview();
+                // Going into the TV guide: the preview keeps playing and just moves to the top
+                if (!has && !(live && mode == MODE_GUIDE)) stopPreview();
                 else if (live) schedulePreview();
             }
         });
@@ -979,10 +980,13 @@ public class BrowseActivity extends Activity {
                 }
             }
             if (newChannel) {
-                ImageLoader.load(infoLogo, ch.icon, 400, 240);
                 Ambient.tint(BrowseActivity.this, ch.icon);
-                stopPreview();
-                schedulePreview();
+                boolean alreadyPlaying = previewItem != null && previewItem.key().equals(ch.key());
+                if (!alreadyPlaying) { // same channel as the list: carry on without restarting
+                    ImageLoader.load(infoLogo, ch.icon, 400, 240);
+                    stopPreview();
+                    schedulePreview();
+                }
             }
         }
 
