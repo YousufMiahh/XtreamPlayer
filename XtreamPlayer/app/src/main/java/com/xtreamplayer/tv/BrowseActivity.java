@@ -17,10 +17,6 @@ import android.widget.ListView;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 
-import androidx.media3.common.PlaybackException;
-import androidx.media3.common.Player;
-import androidx.media3.exoplayer.ExoPlayer;
-import androidx.media3.ui.PlayerView;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -67,9 +63,10 @@ public class BrowseActivity extends Activity {
 
     // live info panel
     private ImageView infoLogo;
-    private PlayerView previewView;
-    private ExoPlayer preview;
+    private FrameLayout previewBox;
+    private Engine preview;        // the live preview (VLC, like full-screen Live TV)
     private Item previewItem;
+    private TextView miniLabel;    // "Playing · channel" while the mini player is on
     private boolean resumed;
     private final Runnable pendingPreview = new Runnable() { public void run() { startPreview(); } };
     private TextView infoName, infoNowTitle, infoNowTime, infoDesc, infoNext;
@@ -235,17 +232,22 @@ public class BrowseActivity extends Activity {
         FrameLayout logoBox = new FrameLayout(this);
         logoBox.setBackground(Ui.rounded(this, Ui.SURFACE_LO, 0, 16));
         logoBox.setClipToOutline(true);
-        previewView = new PlayerView(this);
-        previewView.setUseController(false);
-        previewView.setShutterBackgroundColor(0x00000000);
-        previewView.setVisibility(View.INVISIBLE);
-        logoBox.addView(previewView, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        previewBox = logoBox;
         infoLogo = new ImageView(this);
         infoLogo.setBackgroundColor(Ui.DARK ? 0xFF24252C : 0xFFE6E6EB);
         infoLogo.setScaleType(ImageView.ScaleType.FIT_CENTER);
         int lp = Ui.dp(this, 26);
         infoLogo.setPadding(lp, lp, lp, lp);
         logoBox.addView(infoLogo, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        miniLabel = Ui.oneLine(Ui.medium(this, "", 14, Ui.W1));
+        miniLabel.setTypeface(Ui.semibold());
+        miniLabel.setBackground(Ui.rounded(this, 0xB3000000, 0, 10));
+        miniLabel.setPadding(Ui.dp(this, 12), Ui.dp(this, 6), Ui.dp(this, 12), Ui.dp(this, 6));
+        miniLabel.setVisibility(View.GONE);
+        FrameLayout.LayoutParams mll = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM | Gravity.START);
+        mll.leftMargin = mll.bottomMargin = Ui.dp(this, 10);
+        mll.rightMargin = Ui.dp(this, 10);
+        logoBox.addView(miniLabel, mll);
         p.addView(logoBox, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(this, 194)));
         logoBoxView = logoBox;
         LinearLayout tc = new LinearLayout(this);
@@ -450,7 +452,7 @@ public class BrowseActivity extends Activity {
                     new Coach.Step(midBox, "Channels",
                             "Pause on a channel to see a live preview. OK watches it full screen. " + menu + " on a channel to add it to your favourites."),
                     new Coach.Step(infoPanel, "What's on",
-                            "The preview, what's on now and what's on next for the channel you're on."),
+                            "The preview, what's on now and what's on next. Come back from watching a channel and it keeps playing here while you look for another; Back stops it."),
                     new Coach.Step(null, "The TV guide",
                             "Press ▶ from the channel list to open the TV guide. ▲▼ moves through channels, ◀▶ through programmes, "
                                     + "OK watches. ◀ on what's on now, or Back, takes you out again."));
@@ -623,6 +625,7 @@ public class BrowseActivity extends Activity {
     private void open(int pos) {
         List<Item> list = contentAdapter.items();
         if (pos < 0 || pos >= list.size()) return;
+        if (live) Mini.fromLiveTv = true;
         Open.item(this, list.get(pos), list);
     }
 
@@ -734,6 +737,10 @@ public class BrowseActivity extends Activity {
             exitGuide();
             return;
         }
+        if (live && Mini.active()) { // Back stops the mini player first
+            stopMini();
+            return;
+        }
         if (live && mode == MODE_FOCUS && content.hasFocus()) {
             setMode(MODE_LIST);
             return;
@@ -803,6 +810,8 @@ public class BrowseActivity extends Activity {
         } else {
             contentAdapter.notifyDataSetChanged();
         }
+        if (live && Mini.active()) showMini();
+        else if (live && miniLabel != null) miniLabel.setVisibility(View.GONE);
         if (live && (content.hasFocus() || guide.hasFocus())) schedulePreview();
         if (live && guide.getVisibility() == View.VISIBLE) guide.listingsChanged();
     }
@@ -996,7 +1005,10 @@ public class BrowseActivity extends Activity {
 
         public void onPlay(int row) {
             List<Item> l = contentAdapter.items();
-            if (row >= 0 && row < l.size()) Open.item(BrowseActivity.this, l.get(row), l);
+            if (row >= 0 && row < l.size()) {
+                Mini.fromLiveTv = true;
+                Open.item(BrowseActivity.this, l.get(row), l);
+            }
         }
 
         public void onExit() { exitGuide(); }
@@ -1012,13 +1024,25 @@ public class BrowseActivity extends Activity {
 
     private void schedulePreview() {
         Async.MAIN.removeCallbacks(pendingPreview);
-        if (!live || prefs.previewMode() == 0) return;
+        if (!live || prefs.previewMode() == 0 || Mini.active()) return; // the mini player keeps the box
         Async.MAIN.postDelayed(pendingPreview, 450); // once you pause on a channel (not while scrolling past)
     }
 
+    private final Engine.Listener previewListener = new Engine.Listener() {
+        public void onReady() {
+            // Give VLC a moment to draw its first picture, then uncover it
+            infoLogo.animate().alpha(0f).setStartDelay(250).setDuration(250).start();
+        }
+        public void onEnded() {}
+        public void onError(String what, boolean behind) { stopPreview(); }
+        public void onPlayingChanged(boolean playing) {}
+        public void onBuffering(boolean buffering) {}
+        public void onTracksChanged() {}
+    };
+
     private void startPreview() {
         boolean inGuide = guide != null && guide.hasFocus();
-        if (!resumed || !(content.hasFocus() || inGuide)) return;
+        if (!resumed || Mini.active() || !(content.hasFocus() || inGuide)) return;
         Item it;
         if (inGuide) {
             it = guideChannel;
@@ -1030,35 +1054,32 @@ public class BrowseActivity extends Activity {
         }
         if (it == previewItem && preview != null) return;
         if (preview == null) {
-            preview = PlayerFactory.create(this, prefs, true); // quick-start buffering
-            preview.addListener(new Player.Listener() {
-                @Override
-                public void onRenderedFirstFrame() {
-                    infoLogo.animate().alpha(0f).setDuration(250).start();
-                }
-
-                @Override
-                public void onPlayerError(PlaybackException error) { stopPreview(); }
-            });
-            previewView.setPlayer(preview);
+            // VLC, like full-screen Live TV (copes with the channels Android's player froze on);
+            // Android's player only if that was picked for everything in Settings.
+            boolean vlc = prefs.engineMode() != 1;
+            try {
+                preview = vlc ? new VlcEngine(this, prefs, previewListener) : new ExoEngine(this, prefs, previewListener);
+            } catch (Throwable t) {
+                preview = new ExoEngine(this, prefs, previewListener);
+            }
+            previewBox.addView(preview.view(), 0, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         }
         previewItem = it;
-        previewView.setVisibility(View.VISIBLE); // the video surface only exists while visible
+        infoLogo.animate().cancel();
+        infoLogo.setAlpha(1f);
         preview.setVolume(prefs.previewMode() == 2 ? 1f : 0f);
-        preview.setMediaItem(PlayerFactory.media(api.playUrl(it, prefs.liveFormat())));
-        preview.prepare();
-        preview.setPlayWhenReady(true);
+        try {
+            preview.load(api.playUrl(it, prefs.liveFormat()), 0);
+        } catch (Throwable t) {
+            stopPreview();
+        }
     }
 
     private void stopPreview() {
         Async.MAIN.removeCallbacks(pendingPreview);
         previewItem = null;
-        if (preview != null) {
-            preview.stop();
-            preview.clearMediaItems();
-        }
-        if (previewView != null) previewView.setVisibility(View.INVISIBLE);
-        if (infoLogo != null) {
+        if (preview != null) preview.stopPlayback();
+        if (infoLogo != null && !Mini.active()) {
             infoLogo.animate().cancel();
             infoLogo.setAlpha(1f);
         }
@@ -1067,10 +1088,75 @@ public class BrowseActivity extends Activity {
     private void releasePreview() {
         stopPreview();
         if (preview != null) {
-            previewView.setPlayer(null);
+            previewBox.removeView(preview.view());
             preview.release();
             preview = null;
         }
+    }
+
+    // ------------------------------------------------------------ mini player
+
+    private final Engine.Listener miniListener = new Engine.Listener() {
+        public void onReady() {}
+        public void onEnded() { stopMini(); }
+        public void onError(String what, boolean behind) { stopMini(); }
+        public void onPlayingChanged(boolean playing) {}
+        public void onBuffering(boolean buffering) {}
+        public void onTracksChanged() {}
+    };
+
+    /** Back from a live channel: it keeps playing (with sound) in the preview box. */
+    private void showMini() {
+        if (!live || !Mini.active() || previewBox == null) return;
+        releasePreview(); // only ever one stream
+        VlcEngine e = Mini.engine();
+        View v = e.moveTo(this);
+        previewBox.addView(v, 0, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        e.reattach();
+        e.setListener(miniListener);
+        e.setVolume(1f);
+        infoLogo.animate().cancel();
+        infoLogo.setAlpha(0f);
+        Item m = Mini.item();
+        miniLabel.setText("▶  " + (m == null ? "Playing" : m.name) + "      Back to stop");
+        miniLabel.setVisibility(View.VISIBLE);
+        // Land on that channel in the list if it's there
+        if (m != null) {
+            List<Item> l = contentAdapter.items();
+            for (int i = 0; i < l.size(); i++) {
+                if (l.get(i).key().equals(m.key())) {
+                    content.setSelection(i);
+                    showChannelInfo(i);
+                    break;
+                }
+            }
+        }
+    }
+
+    private void stopMini() {
+        if (Mini.active()) {
+            View v = Mini.engine().view();
+            if (v.getParent() == previewBox) previewBox.removeView(v);
+            Mini.stop();
+        }
+        if (miniLabel != null) miniLabel.setVisibility(View.GONE);
+        if (infoLogo != null) {
+            infoLogo.animate().cancel();
+            infoLogo.setAlpha(1f);
+        }
+        if (live && (content.hasFocus() || (guide != null && guide.hasFocus()))) schedulePreview();
+    }
+
+    @Override
+    protected void onStop() {
+        // Leaving Live TV for anywhere but the full-screen player: the mini player stops
+        if (Mini.active()) {
+            View v = Mini.engine().view();
+            if (v.getParent() == previewBox) previewBox.removeView(v);
+            Mini.stop();
+        }
+        if (miniLabel != null) miniLabel.setVisibility(View.GONE);
+        super.onStop();
     }
 
     @Override

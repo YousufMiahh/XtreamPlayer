@@ -28,9 +28,11 @@ public class ExoEngine implements Engine {
     private final Prefs prefs;
     private final PlayerView view;
     private ExoPlayer player;
+    private Listener l;
 
-    public ExoEngine(Context c, Prefs prefs, final Listener l) {
+    public ExoEngine(Context c, Prefs prefs, Listener listener) {
         this.prefs = prefs;
+        this.l = listener;
         view = new PlayerView(c);
         view.setUseController(false);
         view.setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER);
@@ -66,6 +68,16 @@ public class ExoEngine implements Engine {
         view.setPlayer(player);
         applySubtitleStyle();
     }
+
+    public void setVolume(float v) { if (player != null) player.setVolume(v); }
+
+    public void stopPlayback() {
+        if (player == null) return;
+        player.stop();
+        player.clearMediaItems();
+    }
+
+    public void setListener(Listener listener) { l = listener; }
 
     public View view() { return view; }
     public String name() { return "Android player"; }

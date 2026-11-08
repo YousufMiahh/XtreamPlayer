@@ -20,15 +20,15 @@ public class VlcEngine implements Engine {
     private final Prefs prefs;
     private final LibVLC vlc;
     private final MediaPlayer mp;
-    private final VLCVideoLayout layout;
-    private final Listener l;
+    private VLCVideoLayout layout;
+    private volatile Listener l;
     private volatile boolean ready, released;
     /** VLC's stop/set-media can block while a network stream closes: keep that off the screen thread. */
     private final java.util.concurrent.ExecutorService ops = java.util.concurrent.Executors.newSingleThreadExecutor();
 
-    public VlcEngine(Context c, Prefs prefs, final Listener l) {
+    public VlcEngine(Context c, Prefs prefs, Listener listener) {
         this.prefs = prefs;
-        this.l = l;
+        this.l = listener;
         vlc = VlcHolder.get(c, prefs); // shared, already warmed up at launch
         mp = new MediaPlayer(vlc);
         layout = new VLCVideoLayout(c);
@@ -49,6 +49,7 @@ public class VlcEngine implements Engine {
                             l.onReady();
                             applyPreferredTracks();
                         }
+                        if (volume < 1f) mp.setVolume(Math.round(volume * 100));
                         l.onPlayingChanged(true);
                         break;
                     case MediaPlayer.Event.Paused:
@@ -101,6 +102,7 @@ public class VlcEngine implements Engine {
         // something else, the error retry switches to .m3u8, which doesn't use this.)
         if (url.endsWith(".ts")) m.addOption(":demux=ts");
         if (startMs > 0) m.addOption(":start-time=" + (startMs / 1000.0));
+        if (volume == 0f) m.addOption(":no-audio"); // muted preview: don't even decode the sound
         ops.execute(new Runnable() {
             public void run() {
                 if (released) {
@@ -124,6 +126,45 @@ public class VlcEngine implements Engine {
             }
         });
     }
+
+    private volatile float volume = 1f;
+
+    /** VLC only takes a volume once audio is running, so it's applied again when playback starts. */
+    public void setVolume(float v) {
+        volume = Math.max(0f, Math.min(1f, v));
+        mp.setVolume(Math.round(volume * 100));
+    }
+
+    public void stopPlayback() {
+        ready = false;
+        ops.execute(new Runnable() {
+            public void run() { if (!released) mp.stop(); }
+        });
+    }
+
+    public void setListener(Listener listener) { l = listener; }
+
+    /**
+     * Keeps the stream playing while its picture moves to another screen (the Live TV mini
+     * player): lets go of the current view and returns a fresh one for the new screen.
+     * Add it to the new screen, then call reattach().
+     */
+    public View moveTo(Context c) {
+        if (attached) {
+            try {
+                mp.detachViews();
+            } catch (Throwable ignored) {
+            }
+            attached = false;
+        }
+        android.view.ViewGroup p = (android.view.ViewGroup) layout.getParent();
+        if (p != null) p.removeView(layout);
+        layout = new VLCVideoLayout(c);
+        layout.setFocusable(false);
+        return layout;
+    }
+
+    public void reattach() { attach(); }
 
     public void play() { mp.play(); }
     public void pause() { mp.pause(); }

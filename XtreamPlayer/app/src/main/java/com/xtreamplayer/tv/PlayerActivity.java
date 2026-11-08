@@ -105,6 +105,8 @@ public class PlayerActivity extends Activity implements Engine.Listener {
     protected void onCreate(Bundle b) {
         super.onCreate(b);
         Ui.init(this);
+        cameFromLiveTv = Mini.fromLiveTv; // Back will leave this channel playing small on Live TV
+        Mini.fromLiveTv = false;
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         prefs = new Prefs(this);
         api = new XtreamApi(prefs);
@@ -330,7 +332,25 @@ public class PlayerActivity extends Activity implements Engine.Listener {
     protected void onStart() {
         super.onStart();
         if (videoHost == null) return;
-        startEngine(wantsVlc(current()));
+        if (Mini.active()) {
+            Item m = Mini.item();
+            if (m != null && isLive() && m.key().equals(current().key())) {
+                // The same channel that's playing small on Live TV: take it over without reconnecting
+                VlcEngine e = Mini.adopt();
+                releaseEngine();
+                engine = e;
+                usingVlc = true;
+                View v = e.moveTo(this);
+                videoHost.addView(v, 0, match());
+                e.reattach();
+                e.setListener(this);
+                e.setVolume(1f);
+                adopted = true;
+            } else {
+                Mini.stop(); // a different channel: only one stream at a time
+            }
+        }
+        if (!adopted) startEngine(wantsVlc(current()));
         play(true);
         firstStart = false;
         String menu = Ui.hasMenuKey() ? "☰ (or hold OK)" : "Hold OK";
@@ -488,6 +508,8 @@ public class PlayerActivity extends Activity implements Engine.Listener {
 
     // ------------------------------------------------------------ playback
 
+    private boolean cameFromLiveTv, adopted;
+
     private void play(boolean resume) {
         if (videoHost == null) return;
         Item it = current();
@@ -501,7 +523,8 @@ public class PlayerActivity extends Activity implements Engine.Listener {
                 if (firstStart) Toast.makeText(this, "Resuming from " + SeriesActivity.fmt(pos), Toast.LENGTH_SHORT).show();
             }
         }
-        load(start);
+        if (adopted) adopted = false; // already playing (taken back from the mini player)
+        else load(start);
         prefs.addHistory(it);
         if (isLive()) {
             fade(vodOverlay, false);
@@ -997,6 +1020,13 @@ public class PlayerActivity extends Activity implements Engine.Listener {
         if (engine != null && !isLive() && vodOverlay.getVisibility() == View.VISIBLE && engine.isPlaying()) {
             fade(vodOverlay, false);
             return;
+        }
+        if (cameFromLiveTv && isLive() && engine instanceof VlcEngine && errorText.getVisibility() != View.VISIBLE) {
+            // Keep the channel playing in the Live TV preview box while you look for another
+            VlcEngine e = (VlcEngine) engine;
+            videoHost.removeView(e.view());
+            engine = null;
+            Mini.take(e, queue, index);
         }
         super.onBackPressed();
     }

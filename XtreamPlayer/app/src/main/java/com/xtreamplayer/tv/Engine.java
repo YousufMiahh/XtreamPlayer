@@ -57,5 +57,14 @@ public interface Engine {
     /** Frames per second of the video, 0 if unknown, -1 if there's no video. */
     float frameRate();
 
+    /** 0 = muted, 1 = full volume. */
+    void setVolume(float v);
+
+    /** Stop the current stream but keep the engine for the next one (the Live TV preview). */
+    void stopPlayback();
+
+    /** Who hears about playback events (changes when the mini player moves between screens). */
+    void setListener(Listener l);
+
     void release();
 }
