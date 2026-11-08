@@ -281,7 +281,9 @@ public class BrowseActivity extends Activity {
 
         // Hints at the bottom of the panel
         p.addView(new View(this), new LinearLayout.LayoutParams(1, 0, 1));
-        TextView hint = Ui.text(this, "▶  TV guide      " + (Ui.hasMenuKey() ? "☰" : "Hold OK") + "  Favourite", 14, Ui.TEXT3);
+        TextView hint = Ui.text(this, "", 14, Ui.TEXT3);
+        panelHint = hint;
+        setPanelHint(false);
         hint.setPadding(0, Ui.dp(this, 10), 0, 0);
         p.addView(hint);
         return pOuter;
@@ -820,6 +822,46 @@ public class BrowseActivity extends Activity {
 
     // ------------------------------------------------------------ Live TV layouts and guide
 
+    private TextView panelHint;
+
+    /** The hint under the programme info changes with the layout. */
+    private void setPanelHint(boolean inGuide) {
+        if (panelHint == null) return;
+        String menu = Ui.hasMenuKey() ? "☰" : "Hold OK";
+        panelHint.setText(inGuide
+                ? "OK  Watch      " + menu + "  Full programme details      ◀  Back to channels"
+                : "▶  TV guide      " + menu + "  Favourite");
+    }
+
+    /** Full details for a programme (the info above can be cut short). */
+    private void showProgrammeDetails(int row, XtreamApi.Programme p) {
+        final List<Item> l = contentAdapter.items();
+        if (row < 0 || row >= l.size()) return;
+        final Item ch = l.get(row);
+        StringBuilder b = new StringBuilder();
+        b.append(ch.name);
+        if (p != null) {
+            long now = System.currentTimeMillis() / 1000L;
+            b.append("\n").append(p.timeRange());
+            if (p.start <= now && now < p.stop) b.append("   ·   On now, ").append((p.stop - now) / 60).append(" min left");
+            else if (p.start > now) {
+                long m = (p.start - now + 59) / 60;
+                b.append("   ·   Starts in ").append(m >= 60 ? (m / 60) + " hr " + (m % 60) + " min" : m + " min");
+            }
+            if (p.desc != null && !p.desc.isEmpty()) b.append("\n\n").append(p.desc);
+        } else {
+            b.append("\n\nNo guide information for this time.");
+        }
+        new android.app.AlertDialog.Builder(this, Ui.DARK ? android.R.style.Theme_Material_Dialog_Alert : android.R.style.Theme_Material_Light_Dialog_Alert)
+                .setTitle(p == null ? ch.name : p.title)
+                .setMessage(b.toString())
+                .setPositiveButton("Watch " + ch.name, new android.content.DialogInterface.OnClickListener() {
+                    public void onClick(android.content.DialogInterface d, int w) { Open.item(BrowseActivity.this, ch, l); }
+                })
+                .setNegativeButton("Close", null)
+                .show();
+    }
+
     private void setMode(int m) {
         if (m == mode) return;
         mode = m;
@@ -891,6 +933,7 @@ public class BrowseActivity extends Activity {
             fade(guide, g);
             focusLabel.setText((currentCat == null ? "" : currentCat.name + "      ") + "◀  Categories      ▶  TV Guide");
         }
+        setPanelHint(mode == MODE_GUIDE);
         logoBoxView.setLayoutParams(logoLp);
         textCol.setLayoutParams(textLp);
         info.requestLayout();
@@ -996,6 +1039,8 @@ public class BrowseActivity extends Activity {
         }
 
         public void onExit() { exitGuide(); }
+
+        public void onDetails(int row, XtreamApi.Programme p) { showProgrammeDetails(row, p); }
 
         public void onNeedListings(List<Item> channels) {
             Guide.load(api, channels, new Runnable() {

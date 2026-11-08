@@ -31,6 +31,8 @@ public class EpgGrid extends View {
         void onPlay(int row);
         /** ◀ on the programme that's on now: leave the guide. */
         void onExit();
+        /** ☰ or hold OK: the highlighted programme's full details. */
+        void onDetails(int row, XtreamApi.Programme p);
         /** These channels are about to be on screen and need listings. */
         void onNeedListings(List<Item> channels);
     }
@@ -145,10 +147,33 @@ public class EpgGrid extends View {
             case KeyEvent.KEYCODE_DPAD_CENTER:
             case KeyEvent.KEYCODE_ENTER:
             case KeyEvent.KEYCODE_NUMPAD_ENTER:
-                if (e.getRepeatCount() == 0 && listener != null) listener.onPlay(sel);
+                // Quick press = watch (on release); hold = full programme details
+                if (e.getRepeatCount() == 0) {
+                    okDown = true;
+                    okHeld = false;
+                } else if (okDown && !okHeld && e.getEventTime() - e.getDownTime() >= 450) {
+                    okHeld = true;
+                    if (listener != null) listener.onDetails(sel, current());
+                }
+                return true;
+            case KeyEvent.KEYCODE_MENU:
+            case KeyEvent.KEYCODE_INFO:
+                if (e.getRepeatCount() == 0 && listener != null) listener.onDetails(sel, current());
                 return true;
         }
         return super.onKeyDown(code, e);
+    }
+
+    private boolean okDown, okHeld;
+
+    @Override
+    public boolean onKeyUp(int code, KeyEvent e) {
+        if (code == KeyEvent.KEYCODE_DPAD_CENTER || code == KeyEvent.KEYCODE_ENTER || code == KeyEvent.KEYCODE_NUMPAD_ENTER) {
+            if (okDown && !okHeld && listener != null && !channels.isEmpty()) listener.onPlay(sel);
+            okDown = okHeld = false;
+            return true;
+        }
+        return super.onKeyUp(code, e);
     }
 
     private void moveRow(int to) {
