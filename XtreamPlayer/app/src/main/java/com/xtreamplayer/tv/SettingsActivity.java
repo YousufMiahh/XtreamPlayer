@@ -99,6 +99,14 @@ public class SettingsActivity extends Activity {
             }
         });
 
+        section("Hide What You Don't Watch");
+        row("Countries & Languages", FilterSettings.countriesLabel(prefs), new Action() {
+            public void run(TextView v) { FilterSettings.countries(SettingsActivity.this, prefs, v); }
+        });
+        row("Hidden Categories", FilterSettings.hiddenLabel(prefs), new Action() {
+            public void run(TextView v) { FilterSettings.hidden(SettingsActivity.this, prefs, v); }
+        });
+
         section("Customise Home Screen");
         for (int i = 0; i < Prefs.HOME_KEYS.length; i++) {
             final String key = Prefs.HOME_KEYS[i];

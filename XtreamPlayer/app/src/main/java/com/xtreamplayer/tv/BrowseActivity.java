@@ -331,7 +331,7 @@ public class BrowseActivity extends Activity {
         Async.run(new Async.Work<List<Item>>() {
             public List<Item> run() throws Exception {
                 if (!new Match.Query(q).usable()) return new ArrayList<>();
-                List<Item> all = Repo.streams(api, type, null);
+                List<Item> all = Filters.items(api, prefs, type, Repo.streams(api, type, null));
                 return t != searchToken ? null : Match.rank(all, q, 300, null);
             }
         }, new Async.Done<List<Item>>() {
@@ -356,7 +356,7 @@ public class BrowseActivity extends Activity {
         });
         catList.setOnItemLongClickListener(new AdapterView.OnItemLongClickListener() {
             public boolean onItemLongClick(AdapterView<?> p, View v, int pos, long id) {
-                toggleFavCategory(pos);
+                categoryMenu(pos);
                 return true;
             }
         });
@@ -395,7 +395,8 @@ public class BrowseActivity extends Activity {
             public void done(List<Item> cats, Exception e) {
                 if (isFinishing()) return;
                 spinner.setVisibility(View.GONE);
-                rawCats = cats == null ? new ArrayList<Item>() : cats;
+                rawCats = cats == null ? new ArrayList<Item>() : Filters.categories(prefs, type, cats); // hidden ones left out
+                filterVersion = Filters.version();
                 List<Item> all = buildCategoryList();
                 int firstReal = 4;
                 catAdapter.set(all);
@@ -436,7 +437,54 @@ public class BrowseActivity extends Activity {
         return all;
     }
 
-    /** ☰ or hold OK on a category: add it to / remove it from your favourite categories. */
+    private int filterVersion;
+
+    /** ☰ or hold OK on a category: favourite it, or hide it. */
+    private void categoryMenu(final int pos) {
+        if (pos < 0 || pos >= catAdapter.getCount()) return;
+        final Item c = catAdapter.getItem(pos);
+        if (c.id.startsWith("__")) return;
+        boolean fav = prefs.isFavCategory(type, c.id);
+        new android.app.AlertDialog.Builder(this, Ui.DARK ? android.R.style.Theme_Material_Dialog_Alert : android.R.style.Theme_Material_Light_Dialog_Alert)
+                .setTitle(c.name)
+                .setItems(new String[]{fav ? "♥  Remove from favourite categories" : "♡  Add to favourite categories",
+                        "Hide this category", "Cancel"}, new android.content.DialogInterface.OnClickListener() {
+                    public void onClick(android.content.DialogInterface d, int which) {
+                        if (which == 0) toggleFavCategory(pos);
+                        else if (which == 1) hideCategory(c);
+                    }
+                })
+                .show();
+    }
+
+    /** Hidden categories come back from Settings → Hidden Categories. */
+    private void hideCategory(Item c) {
+        Filters.setCategoryHidden(prefs, type, c.id, true);
+        android.widget.Toast.makeText(this, "Hidden — " + c.name + ". Bring it back in Settings → Hidden Categories.", android.widget.Toast.LENGTH_LONG).show();
+        boolean wasOpen = currentCat != null && currentCat.id.equals(c.id);
+        reloadCategories(wasOpen);
+    }
+
+    /** Re-applies hidden categories / countries (e.g. after changing them in Settings). */
+    private void reloadCategories(boolean openAll) {
+        String activeId = currentCat == null ? null : currentCat.id;
+        int sel = Math.max(0, catList.getSelectedItemPosition());
+        try {
+            rawCats = Filters.categories(prefs, type, Repo.categories(api, type));
+        } catch (Exception ignored) {
+        }
+        filterVersion = Filters.version();
+        List<Item> all = buildCategoryList();
+        catAdapter.set(all);
+        int active = -1;
+        for (int i = 0; i < all.size(); i++) if (activeId != null && all.get(i).id.equals(activeId)) active = i;
+        catAdapter.active = active;
+        catList.setSelection(Math.min(sel, all.size() - 1));
+        if (openAll || active < 0) openCategory(all.get(3), 3, false); // "All"
+        else if (ALL.equals(activeId) || SEARCH.equals(activeId)) openCategory(all.get(active), active, false);
+        Adapters.refresh(catList);
+    }
+
     private void toggleFavCategory(int pos) {
         if (pos < 0 || pos >= catAdapter.getCount()) return;
         Item c = catAdapter.getItem(pos);
@@ -494,7 +542,10 @@ public class BrowseActivity extends Activity {
         emptyText.setText("");
         spinner.setVisibility(View.VISIBLE);
         Async.run(new Async.Work<List<Item>>() {
-            public List<Item> run() throws Exception { return Repo.streams(api, type, ALL.equals(cat.id) ? null : cat.id); }
+            public List<Item> run() throws Exception {
+                if (ALL.equals(cat.id)) return Filters.items(api, prefs, type, Repo.streams(api, type, null));
+                return Repo.streams(api, type, cat.id);
+            }
         }, new Async.Done<List<Item>>() {
             public void done(List<Item> list, Exception e) {
                 if (isFinishing() || token != loadToken) return;
@@ -641,7 +692,7 @@ public class BrowseActivity extends Activity {
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
         if (keyCode == KeyEvent.KEYCODE_MENU && catList.hasFocus()) {
-            toggleFavCategory(catList.getSelectedItemPosition());
+            categoryMenu(catList.getSelectedItemPosition());
             return true;
         }
         if (keyCode == KeyEvent.KEYCODE_MENU && content.hasFocus()) {
@@ -720,6 +771,7 @@ public class BrowseActivity extends Activity {
     protected void onResume() {
         super.onResume();
         resumed = true;
+        if (filterVersion != 0 && filterVersion != Filters.version() && catAdapter.getCount() > 0) reloadCategories(false); // changed in Settings
         if (currentCat != null && isSpecial(currentCat.id)) {
             contentAdapter.set(specialList(currentCat.id));
         } else {

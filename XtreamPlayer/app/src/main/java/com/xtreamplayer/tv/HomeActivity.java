@@ -280,9 +280,15 @@ public class HomeActivity extends Activity {
         return l.size() > n ? l.subList(0, n) : l;
     }
 
+    /** Newest 24, leaving out hidden categories and countries. */
+    private List<Item> recent(String type) throws java.io.IOException {
+        List<Item> l = Filters.items(api, prefs, type, Repo.recentlyAdded(api, type, 300));
+        return l.size() > 24 ? new java.util.ArrayList<>(l.subList(0, 24)) : l;
+    }
+
     private void loadNewArrivals() {
         Async.run(new Async.Work<List<Item>>() {
-            public List<Item> run() throws Exception { return Repo.recentlyAdded(api, Item.MOVIE, 24); }
+            public List<Item> run() throws Exception { return recent(Item.MOVIE); }
         }, new Async.Done<List<Item>>() {
             public void done(List<Item> r, Exception e) {
                 if (isFinishing()) return;
@@ -290,7 +296,7 @@ public class HomeActivity extends Activity {
                 buildRemoteRows();
                 if (getCurrentFocus() == null) focusFirstCard();
                 Async.run(new Async.Work<List<Item>>() {
-                    public List<Item> run() throws Exception { return Repo.recentlyAdded(api, Item.SERIES, 24); }
+                    public List<Item> run() throws Exception { return recent(Item.SERIES); }
                 }, new Async.Done<List<Item>>() {
                     public void done(List<Item> r2, Exception e2) {
                         if (isFinishing()) return;

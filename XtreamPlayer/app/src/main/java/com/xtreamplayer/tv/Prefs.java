@@ -141,7 +141,7 @@ public class Prefs {
     }
 
     /** Key prefix for the current account's data ("" for the original account, so old data keeps working). */
-    private String ns() {
+    String ns() {
         String id = sp.getString("current", null); // fast path: called for every list row
         if (id != null) return id.isEmpty() ? "" : id + "_";
         Account a = current();

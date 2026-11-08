@@ -236,7 +236,7 @@ public class SearchActivity extends Activity implements TopBar.Reselect {
                 // Ignore punctuation, spaces and accents: "spiderman", "spider man" and "spiderm"
                 // all find "Spider-Man". Several words match in any order ("man spider").
                 if (t != token) return null; // you've typed more since: skip this one
-                return Match.rank(all, q, max, null); // best matches first (see Match)
+                return Match.rank(Filters.items(api, prefs, TYPES[slot], all), q, max, null); // hidden categories left out // best matches first (see Match)
             }
         }, new Async.Done<List<Item>>() {
             public void done(final List<Item> hits, Exception e) {
