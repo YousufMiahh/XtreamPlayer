@@ -340,7 +340,7 @@ public class BrowseActivity extends Activity {
         Async.run(new Async.Work<List<Item>>() {
             public List<Item> run() throws Exception {
                 if (!new Match.Query(q).usable()) return new ArrayList<>();
-                List<Item> all = Filters.items(api, prefs, type, Repo.streams(api, type, null));
+                List<Item> all = Filters.searchItems(api, prefs, type, Repo.streams(api, type, null));
                 return t != searchToken ? null : Match.rank(all, q, 300, null);
             }
         }, new Async.Done<List<Item>>() {

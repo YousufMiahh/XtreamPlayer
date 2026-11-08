@@ -201,14 +201,22 @@ public final class Filters {
     private static final Map<List<Item>, Object[]> CACHE = new IdentityHashMap<>();
 
     /** The channels / movies / series to show from a whole-section list (cached until something changes). */
-    public static List<Item> items(XtreamApi api, Prefs p, String type, List<Item> all) {
+    public static List<Item> items(XtreamApi api, Prefs p, String type, List<Item> all) { return items(api, p, type, all, false); }
+
+    /**
+     * For search: categories you hid yourself still turn up (you hid the category, not what's in
+     * it), but anything from a country / language / writing you've switched off stays out.
+     */
+    public static List<Item> searchItems(XtreamApi api, Prefs p, String type, List<Item> all) { return items(api, p, type, all, true); }
+
+    private static List<Item> items(XtreamApi api, Prefs p, String type, List<Item> all, boolean forSearch) {
         if (all == null) return null;
-        Set<String> tags = hiddenTags(p), catIds = hiddenCategories(p, type);
+        Set<String> tags = hiddenTags(p), catIds = forSearch ? new HashSet<String>() : hiddenCategories(p, type);
         if (tags.isEmpty() && catIds.isEmpty()) return all;
         int v = version();
         synchronized (CACHE) {
             Object[] c = CACHE.get(all);
-            if (c != null && (Integer) c[0] == v && p.ns().equals(c[2])) {
+            if (c != null && (Integer) c[0] == v && p.ns().equals(c[2]) && c[3].equals(forSearch)) {
                 @SuppressWarnings("unchecked") List<Item> l = (List<Item>) c[1];
                 return l;
             }
@@ -224,7 +232,7 @@ public final class Filters {
         for (Item it : all) if (it.categoryId == null || !hidden.contains(it.categoryId)) out.add(it);
         synchronized (CACHE) {
             if (CACHE.size() > 8) CACHE.clear();
-            CACHE.put(all, new Object[]{v, out, p.ns()});
+            CACHE.put(all, new Object[]{v, out, p.ns(), forSearch});
         }
         return out;
     }
