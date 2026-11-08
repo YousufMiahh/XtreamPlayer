@@ -47,7 +47,8 @@ public class HomeActivity extends Activity {
         col.setOrientation(LinearLayout.VERTICAL);
         col.setClipChildren(false);
         col.setPadding(0, 0, 0, Ui.dp(this, 48));
-        col.addView(TopBar.build(this, TopBar.HOME));
+        topBar = TopBar.build(this, TopBar.HOME);
+        col.addView(topBar);
 
         localRows = new LinearLayout(this);
         localRows.setOrientation(LinearLayout.VERTICAL);
@@ -71,6 +72,28 @@ public class HomeActivity extends Activity {
         startLibrary();
         showCrashNotice();
         focusFirstCard();
+        Async.MAIN.postDelayed(new Runnable() { // once the rows have filled in
+            public void run() {
+                if (isFinishing()) return;
+                Coach.offer(HomeActivity.this, true, new Runnable() { public void run() { homeTour(); } });
+            }
+        }, 1500);
+    }
+
+    private View topBar;
+
+    /** Quick-start tips for Home (Settings → Show Tutorial runs them again). */
+    private void homeTour() {
+        View rows = localRows.getChildCount() > 0 ? localRows.getChildAt(0) : remoteRows.getChildCount() > 0 ? remoteRows.getChildAt(0) : null;
+        Coach.show(this, "home", true,
+                new Coach.Step(topBar, "Getting around",
+                        "Move along the top bar to switch between Home, Live TV, Movies, Series, Search and Settings. Just pause on one and it opens."),
+                new Coach.Step(rows, "Your Home screen",
+                        "Continue Watching, Recent Channels, your favourites and the UK Top 10 all live here. "
+                                + (Ui.hasMenuKey() ? "Press ☰ (or hold OK)" : "Hold OK") + " on a card to favourite it, or to remove it from Continue Watching."),
+                new Coach.Step(null, "Make it yours",
+                        "In Settings you can choose which rows Home shows, hide countries and categories you never watch, "
+                                + "change subtitle style and switch accounts. You can watch this tour again from Settings too."));
     }
 
     /** After a crash: explain what happened and show the report (so it can be photographed and sent). */

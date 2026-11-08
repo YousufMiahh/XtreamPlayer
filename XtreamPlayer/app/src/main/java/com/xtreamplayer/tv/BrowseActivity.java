@@ -406,6 +406,7 @@ public class BrowseActivity extends Activity {
                         : (all.size() > firstReal ? firstReal : firstReal - 1);
                 if (!TopBar.tabFocused(BrowseActivity.this)) catList.requestFocus();
                 catList.setSelection(start);
+                Async.MAIN.postDelayed(new Runnable() { public void run() { if (!isFinishing()) tour(); } }, 600);
                 openCategory(all.get(start), start, false);
             }
         });
@@ -438,6 +439,30 @@ public class BrowseActivity extends Activity {
     }
 
     private int filterVersion;
+
+    /** Quick-start tips for Live TV / Movies & Series (shown once while the tutorial is on). */
+    private void tour() {
+        String menu = (Ui.hasMenuKey() ? "Press ☰ (or hold OK)" : "Hold OK");
+        if (live) {
+            Coach.show(this, "live", true,
+                    new Coach.Step(catBox, "Categories",
+                            "Search is at the top. " + menu + " on a category to make it a favourite (it moves near the top with a ♥) or to hide it."),
+                    new Coach.Step(midBox, "Channels",
+                            "Pause on a channel to see a live preview. OK watches it full screen. " + menu + " on a channel to add it to your favourites."),
+                    new Coach.Step(infoPanel, "What's on",
+                            "The preview, what's on now and what's on next for the channel you're on."),
+                    new Coach.Step(null, "The TV guide",
+                            "Press ▶ from the channel list to open the TV guide. ▲▼ moves through channels, ◀▶ through programmes, "
+                                    + "OK watches. ◀ on what's on now, or Back, takes you out again."));
+        } else {
+            Coach.show(this, "vod", true,
+                    new Coach.Step(catBox, "Categories",
+                            "Search this section at the top, then your favourites, Continue Watching and everything else. "
+                                    + menu + " on a category to favourite or hide it."),
+                    new Coach.Step(midBox, "Pick something",
+                            "OK opens the details page, with Play, Resume, the trailer and Favourite. " + menu + " here adds it to your favourites."));
+        }
+    }
 
     /** ☰ or hold OK on a category: favourite it, or hide it. */
     private void categoryMenu(final int pos) {
@@ -704,6 +729,7 @@ public class BrowseActivity extends Activity {
 
     @Override
     public void onBackPressed() {
+        if (Coach.back(this)) return;
         if (live && guide.hasFocus()) {
             exitGuide();
             return;

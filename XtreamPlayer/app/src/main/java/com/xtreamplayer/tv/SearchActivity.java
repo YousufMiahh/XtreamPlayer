@@ -71,7 +71,7 @@ public class SearchActivity extends Activity implements TopBar.Reselect {
         col.addView(box, blp);
 
         // All | Live TV | Movies | Series
-        LinearLayout chipRow = new LinearLayout(this);
+        final LinearLayout chipRow = new LinearLayout(this);
         chipRow.setGravity(Gravity.CENTER_HORIZONTAL);
         chipRow.setClipChildren(false);
         chipRow.setClipToPadding(false);
@@ -132,6 +132,9 @@ public class SearchActivity extends Activity implements TopBar.Reselect {
         });
         box.requestFocus();
         loadLibrary();
+        Coach.show(this, "search", true,
+                new Coach.Step(box, "Search everything", "Type a channel, film or series. Spaces, dashes and accents don't matter, and the best matches come first."),
+                new Coach.Step(chipRow, "Narrow it down", "Choose Live TV, Movies or Series to see only those, laid out across the whole screen."));
     }
 
     /**
@@ -271,6 +274,7 @@ public class SearchActivity extends Activity implements TopBar.Reselect {
 
     @Override
     public void onBackPressed() {
+        if (Coach.back(this)) return;
         if (box.hasFocus()) { // Back while typing: close the keyboard and stay on Search
             closeKeyboard();
             return;

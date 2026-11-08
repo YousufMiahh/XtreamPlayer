@@ -333,6 +333,11 @@ public class PlayerActivity extends Activity implements Engine.Listener {
         startEngine(wantsVlc(current()));
         play(true);
         firstStart = false;
+        String menu = Ui.hasMenuKey() ? "☰ (or hold OK)" : "Hold OK";
+        if (isLive()) Coach.show(this, "player_live", true, new Coach.Step(null, "Watching Live TV",
+                "▲ ▼  Change channel\nOK  Channel list\n◀ ▶  Channel info\n" + menu + "  Favourite, subtitles & audio\nBack  Leave"));
+        else Coach.show(this, "player_vod", true, new Coach.Step(null, "Watching films & series",
+                "OK  Pause / play\n◀  Back 5 seconds     ▶  Forward 10 seconds (press again to go further)\n▼ or ☰  Subtitles, audio & favourite\nBack  Leave — your place is saved"));
         Async.MAIN.post(ticker);
         Async.MAIN.postDelayed(watchdog, 1000);
     }
@@ -839,6 +844,7 @@ public class PlayerActivity extends Activity implements Engine.Listener {
 
     @Override
     public boolean dispatchKeyEvent(KeyEvent e) {
+        if (Coach.showing(this)) return super.dispatchKeyEvent(e); // the tutorial card has the keys
         int k = e.getKeyCode();
         boolean okKey = k == KeyEvent.KEYCODE_DPAD_CENTER || k == KeyEvent.KEYCODE_ENTER;
         if (engine != null && okKey && isLive() && !panelOpen() && errorText.getVisibility() != View.VISIBLE) {
@@ -983,6 +989,7 @@ public class PlayerActivity extends Activity implements Engine.Listener {
 
     @Override
     public void onBackPressed() {
+        if (Coach.back(this)) return;
         if (videoHost != null && panelOpen()) {
             hidePanels();
             return;
