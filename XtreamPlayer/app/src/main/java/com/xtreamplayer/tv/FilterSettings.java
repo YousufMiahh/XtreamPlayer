@@ -29,7 +29,9 @@ final class FilterSettings {
     static String hiddenLabel(Prefs prefs) {
         int n = 0;
         for (String t : new String[]{Item.LIVE, Item.MOVIE, Item.SERIES}) n += Filters.hiddenCategories(prefs, t).size();
-        return n == 0 ? "None" : n + (n == 1 ? " category" : " categories");
+        boolean filters = !Filters.hiddenTags(prefs).isEmpty();
+        if (n == 0) return filters ? "See everything that's hidden" : "None";
+        return n + " hidden by you" + (filters ? " · more by filters" : "");
     }
 
     /** Tick the countries and languages to keep; unticked ones disappear everywhere. */
@@ -53,7 +55,7 @@ final class FilterSettings {
                     String k = keys.get(i);
                     String name = Filters.tagName(k);
                     int n = tags.get(k);
-                    labels[i] = (name.equals(k) ? k : k + "  ·  " + name) + "   (" + n + (n == 1 ? " category)" : " categories)");
+                    labels[i] = (k.startsWith("#") || name.equals(k) ? name : k + "  ·  " + name) + "   (" + n + (n == 1 ? " category)" : " categories)");
                     shown[i] = !hidden.contains(k);
                 }
                 final AlertDialog dlg = new AlertDialog.Builder(a, dialogTheme())
@@ -111,51 +113,74 @@ final class FilterSettings {
         });
     }
 
-    /** Categories hidden by hand: untick to bring them back. */
+    /**
+     * Everything that's hidden, whether you hid it or a country / writing filter did.
+     * Untick to bring a single category back (it then shows even though its country is hidden).
+     */
     static void hidden(final Activity a, final Prefs prefs, final TextView value) {
         final XtreamApi api = new XtreamApi(prefs);
-        Async.run(new Async.Work<List<String[]>>() {
-            public List<String[]> run() {
-                List<String[]> out = new ArrayList<>(); // {type, id, label}
+        Async.run(new Async.Work<List<Object[]>>() {
+            public List<Object[]> run() {
+                // {type, id, label, hiddenByYou, hiddenByFilter}
+                List<Object[]> mine = new ArrayList<>(), filtered = new ArrayList<>();
                 String[] types = {Item.LIVE, Item.MOVIE, Item.SERIES};
                 String[] names = {"Live TV", "Movies", "Series"};
+                Set<String> tags = Filters.hiddenTags(prefs);
                 for (int i = 0; i < 3; i++) {
-                    Set<String> ids = Filters.hiddenCategories(prefs, types[i]);
-                    if (ids.isEmpty()) continue;
-                    Map<String, String> byId = new java.util.HashMap<>();
+                    Set<String> byYou = Filters.hiddenCategories(prefs, types[i]);
+                    Set<String> shows = Filters.alwaysShown(prefs, types[i]);
+                    List<Item> cats;
                     try {
-                        for (Item c : Repo.categories(api, types[i])) byId.put(c.id, c.name);
-                    } catch (Exception ignored) {
+                        cats = Repo.categories(api, types[i]);
+                    } catch (Exception e) {
+                        continue;
                     }
-                    for (String id : ids) {
-                        String n = byId.get(id);
-                        out.add(new String[]{types[i], id, names[i] + "  ·  " + (n == null ? "Category " + id : n)});
+                    for (Item c : cats) {
+                        boolean you = byYou.contains(c.id);
+                        String t = Filters.tag(c.name);
+                        boolean filter = t != null && tags.contains(t);
+                        if (!you && !filter) continue;
+                        String why = you ? "hidden by you" : "hidden by the " + Filters.tagName(t) + " filter";
+                        boolean nowHidden = you || !shows.contains(c.id);
+                        Object[] row = {types[i], c.id, names[i] + "  ·  " + c.name + "   (" + why + ")", you, filter, nowHidden};
+                        (you ? mine : filtered).add(row);
                     }
                 }
-                return out;
+                mine.addAll(filtered); // yours first, then the ones the filters hid
+                return mine;
             }
-        }, new Async.Done<List<String[]>>() {
-            public void done(final List<String[]> rows, Exception e) {
+        }, new Async.Done<List<Object[]>>() {
+            public void done(final List<Object[]> rows, Exception e) {
                 if (a.isFinishing() || rows == null) return;
                 if (rows.isEmpty()) {
                     Toast.makeText(a, "Nothing hidden. Hold OK (or press ☰) on a category to hide it.", Toast.LENGTH_LONG).show();
                     return;
                 }
                 final String[] labels = new String[rows.size()];
-                final boolean[] keepHidden = new boolean[rows.size()];
+                final boolean[] hidden = new boolean[rows.size()];
                 for (int i = 0; i < rows.size(); i++) {
-                    labels[i] = rows.get(i)[2];
-                    keepHidden[i] = true;
+                    labels[i] = (String) rows.get(i)[2];
+                    hidden[i] = (Boolean) rows.get(i)[5];
                 }
                 new AlertDialog.Builder(a, dialogTheme())
-                        .setTitle("Hidden categories — untick to show again")
-                        .setMultiChoiceItems(labels, keepHidden, new DialogInterface.OnMultiChoiceClickListener() {
-                            public void onClick(DialogInterface d, int which, boolean on) { keepHidden[which] = on; }
+                        .setTitle("Hidden categories — untick to show")
+                        .setMultiChoiceItems(labels, hidden, new DialogInterface.OnMultiChoiceClickListener() {
+                            public void onClick(DialogInterface d, int which, boolean on) { hidden[which] = on; }
                         })
                         .setPositiveButton("Save", new DialogInterface.OnClickListener() {
                             public void onClick(DialogInterface d, int w) {
                                 for (int i = 0; i < rows.size(); i++) {
-                                    if (!keepHidden[i]) Filters.setCategoryHidden(prefs, rows.get(i)[0], rows.get(i)[1], false);
+                                    Object[] r = rows.get(i);
+                                    String type = (String) r[0], id = (String) r[1];
+                                    boolean you = (Boolean) r[3], filter = (Boolean) r[4];
+                                    if (hidden[i] == (Boolean) r[5]) continue; // unchanged
+                                    if (!hidden[i]) { // bring it back
+                                        if (you) Filters.setCategoryHidden(prefs, type, id, false);
+                                        if (filter) Filters.setAlwaysShown(prefs, type, id, true);
+                                    } else { // hide it again
+                                        if (filter) Filters.setAlwaysShown(prefs, type, id, false);
+                                        else Filters.setCategoryHidden(prefs, type, id, true);
+                                    }
                                 }
                                 if (value != null) value.setText(hiddenLabel(prefs));
                             }

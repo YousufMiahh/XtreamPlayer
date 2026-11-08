@@ -35,15 +35,70 @@ public final class Filters {
 
     public static synchronized int version() { return version; }
 
-    /** "UK| SPORT ʰᵉᵛᶜ" → "UK"; null if the name doesn't start with a tag. */
+    /**
+     * "UK| SPORT ʰᵉᵛᶜ" → "UK". Names with no tag but written mostly in another alphabet
+     * (Arabic, Cyrillic, Hindi…) get a writing-system tag such as "#ARABIC". Null otherwise.
+     */
     public static String tag(String name) {
         if (name == null) return null;
         Matcher m = TAG.matcher(name.trim());
-        if (!m.find()) return null;
+        if (!m.find()) return script(name);
         String t = m.group(1).toUpperCase(Locale.UK);
         if (t.equals("USA")) t = "US";
         if (t.equals("GB")) t = "UK";
         return t;
+    }
+
+    /** The writing system most of the name's letters use, if it isn't the Latin alphabet. */
+    static String script(String name) {
+        Map<String, Integer> counts = new HashMap<>();
+        int letters = 0;
+        for (int i = 0; i < name.length(); i++) {
+            char ch = name.charAt(i);
+            if (!Character.isLetter(ch)) continue;
+            letters++;
+            String s = scriptOf(ch);
+            if (s == null) continue;
+            Integer n = counts.get(s);
+            counts.put(s, n == null ? 1 : n + 1);
+        }
+        String best = null;
+        int bestN = 0;
+        for (Map.Entry<String, Integer> e : counts.entrySet()) {
+            if (e.getValue() > bestN) {
+                best = e.getKey();
+                bestN = e.getValue();
+            }
+        }
+        return best != null && bestN * 10 >= letters * 4 ? best : null; // at least 40% of the letters
+    }
+
+    private static String scriptOf(char ch) {
+        Character.UnicodeBlock b = Character.UnicodeBlock.of(ch);
+        if (b == null) return null;
+        if (b == Character.UnicodeBlock.ARABIC || b == Character.UnicodeBlock.ARABIC_PRESENTATION_FORMS_A
+                || b == Character.UnicodeBlock.ARABIC_PRESENTATION_FORMS_B || "ARABIC_SUPPLEMENT".equals(b.toString())) return "#ARABIC";
+        if (b == Character.UnicodeBlock.CYRILLIC || b == Character.UnicodeBlock.CYRILLIC_SUPPLEMENTARY) return "#CYRILLIC";
+        if (b == Character.UnicodeBlock.DEVANAGARI) return "#DEVANAGARI";
+        if (b == Character.UnicodeBlock.BENGALI) return "#BENGALI";
+        if (b == Character.UnicodeBlock.GURMUKHI) return "#GURMUKHI";
+        if (b == Character.UnicodeBlock.GUJARATI) return "#GUJARATI";
+        if (b == Character.UnicodeBlock.TAMIL) return "#TAMIL";
+        if (b == Character.UnicodeBlock.TELUGU) return "#TELUGU";
+        if (b == Character.UnicodeBlock.KANNADA) return "#KANNADA";
+        if (b == Character.UnicodeBlock.MALAYALAM) return "#MALAYALAM";
+        if (b == Character.UnicodeBlock.SINHALA) return "#SINHALA";
+        if (b == Character.UnicodeBlock.THAI) return "#THAI";
+        if (b == Character.UnicodeBlock.HEBREW) return "#HEBREW";
+        if (b == Character.UnicodeBlock.GREEK) return "#GREEK";
+        if (b == Character.UnicodeBlock.ARMENIAN) return "#ARMENIAN";
+        if (b == Character.UnicodeBlock.GEORGIAN) return "#GEORGIAN";
+        if (b == Character.UnicodeBlock.ETHIOPIC) return "#ETHIOPIC";
+        if (b == Character.UnicodeBlock.HANGUL_SYLLABLES || b == Character.UnicodeBlock.HANGUL_JAMO
+                || b == Character.UnicodeBlock.HANGUL_COMPATIBILITY_JAMO) return "#KOREAN";
+        if (b == Character.UnicodeBlock.HIRAGANA || b == Character.UnicodeBlock.KATAKANA) return "#JAPANESE";
+        if (b == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS) return "#CHINESE";
+        return null;
     }
 
     private static final Map<String, String> NAMES = new HashMap<>();
@@ -66,6 +121,13 @@ public final class Filters {
                 "ASI", "Asia", "AFR", "Africa", "ARA", "Arabic", "HIN", "Hindi", "URD", "Urdu", "PUN", "Punjabi",
                 "TAM", "Tamil", "BEN", "Bengali", "SOM", "Somali", "KID", "Kids", "XXX", "Adult", "ADU", "Adult"};
         for (int i = 0; i + 1 < p.length; i += 2) NAMES.put(p[i], p[i + 1]);
+        String[] w = {"#ARABIC", "Arabic writing", "#CYRILLIC", "Cyrillic writing (Russian, Ukrainian…)",
+                "#DEVANAGARI", "Hindi writing (Devanagari)", "#BENGALI", "Bengali writing", "#GURMUKHI", "Punjabi writing",
+                "#GUJARATI", "Gujarati writing", "#TAMIL", "Tamil writing", "#TELUGU", "Telugu writing", "#KANNADA", "Kannada writing",
+                "#MALAYALAM", "Malayalam writing", "#SINHALA", "Sinhala writing", "#THAI", "Thai writing", "#HEBREW", "Hebrew writing",
+                "#GREEK", "Greek writing", "#ARMENIAN", "Armenian writing", "#GEORGIAN", "Georgian writing", "#ETHIOPIC", "Amharic writing",
+                "#KOREAN", "Korean writing", "#JAPANESE", "Japanese writing", "#CHINESE", "Chinese writing"};
+        for (int i = 0; i + 1 < w.length; i += 2) NAMES.put(w[i], w[i + 1]);
     }
 
     public static String tagName(String tag) {
@@ -83,6 +145,17 @@ public final class Filters {
     }
 
     public static Set<String> hiddenCategories(Prefs p, String type) { return readSet(p, "hide_cat_" + type); }
+
+    /** Categories you brought back even though a country / writing filter would hide them. */
+    public static Set<String> alwaysShown(Prefs p, String type) { return readSet(p, "show_cat_" + type); }
+
+    public static void setAlwaysShown(Prefs p, String type, String id, boolean on) {
+        Set<String> s = alwaysShown(p, type);
+        if (on) s.add(id);
+        else s.remove(id);
+        writeSet(p, "show_cat_" + type, s);
+        changed();
+    }
 
     public static void setCategoryHidden(Prefs p, String type, String id, boolean hidden) {
         Set<String> s = hiddenCategories(p, type);
@@ -108,8 +181,9 @@ public final class Filters {
 
     // ------------------------------------------------------------ applying them
 
-    public static boolean isHidden(Item cat, Set<String> tags, Set<String> cats) {
-        if (cats.contains(cat.id)) return true;
+    public static boolean isHidden(Item cat, Set<String> tags, Set<String> cats, Set<String> shows) {
+        if (cats.contains(cat.id)) return true; // hidden by you
+        if (shows.contains(cat.id)) return false; // brought back despite its country / writing
         String t = tag(cat.name);
         return t != null && tags.contains(t);
     }
@@ -117,10 +191,10 @@ public final class Filters {
     /** The categories to show. */
     public static List<Item> categories(Prefs p, String type, List<Item> all) {
         if (all == null) return null;
-        Set<String> tags = hiddenTags(p), cats = hiddenCategories(p, type);
+        Set<String> tags = hiddenTags(p), cats = hiddenCategories(p, type), shows = alwaysShown(p, type);
         if (tags.isEmpty() && cats.isEmpty()) return all;
         List<Item> out = new ArrayList<>();
-        for (Item c : all) if (!isHidden(c, tags, cats)) out.add(c);
+        for (Item c : all) if (!isHidden(c, tags, cats, shows)) out.add(c);
         return out;
     }
 
@@ -141,7 +215,8 @@ public final class Filters {
         }
         Set<String> hidden = new HashSet<>();
         try {
-            for (Item cat : Repo.categories(api, type)) if (isHidden(cat, tags, catIds)) hidden.add(cat.id);
+            Set<String> shows = alwaysShown(p, type);
+            for (Item cat : Repo.categories(api, type)) if (isHidden(cat, tags, catIds, shows)) hidden.add(cat.id);
         } catch (Exception ignored) {
         }
         if (hidden.isEmpty()) return all;
