@@ -2,7 +2,7 @@ name: Build APK
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ main, master, dev ]
   workflow_dispatch:
 
 permissions:
@@ -53,9 +53,27 @@ jobs:
         run: cp "$PROJECT_DIR/app/build/outputs/apk/release/app-release.apk" XtreamPlayer.apk
 
       - name: Publish GitHub release
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v1.0.${{ github.run_number }}
           name: Xtream Player 1.0.${{ github.run_number }}
           files: XtreamPlayer.apk
           make_latest: true
+
+      # Test builds from the dev branch: a separate pre-release that never becomes "latest",
+      # so the normal download link / Downloader code keeps giving the released version.
+      - name: Publish test build
+        if: github.ref == 'refs/heads/dev'
+        run: cp XtreamPlayer.apk XtreamPlayer-test.apk
+
+      - name: Upload test build
+        if: github.ref == 'refs/heads/dev'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: test
+          name: Test build (dev branch)
+          body: "Latest test build from the dev branch (run ${{ github.run_number }}). Not a release."
+          files: XtreamPlayer-test.apk
+          prerelease: true
+          make_latest: false
