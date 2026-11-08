@@ -55,6 +55,7 @@ public class BrowseActivity extends Activity {
     private boolean live;
 
     private ListView catList;
+    private TextView catHint;
     private AbsListView content;
     private Adapters.TextRows catAdapter;
     private Adapters.ItemAdapter contentAdapter;
@@ -113,11 +114,24 @@ public class BrowseActivity extends Activity {
         Adapters.prepare(catList, new View.OnFocusChangeListener() {
             public void onFocusChange(View v, boolean has) {
                 if (has && live && mode != MODE_LIST) setMode(MODE_LIST); // categories always show the full layout
+                if (catHint != null) catHint.animate().alpha(has ? 1f : 0f).setDuration(180).start();
             }
         });
         catAdapter = new Adapters.TextRows(this);
         catAdapter.attach(catList);
-        catBox = Glider.wrap(this, catList, new Glider[1]);
+        // the category list with its button hint underneath (shown while you're in the list)
+        LinearLayout catCol = new LinearLayout(this);
+        catCol.setOrientation(LinearLayout.VERTICAL);
+        catCol.setClipChildren(false);
+        catCol.setClipToPadding(false);
+        catCol.addView(Glider.wrap(this, catList, new Glider[1]), new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
+        catHint = Ui.text(this, Ui.hasMenuKey() ? "Hold OK  ♥ Favourite      ☰  Hide" : "Hold OK  Favourite or hide", 14, Ui.TEXT2);
+        catHint.setGravity(Gravity.CENTER);
+        catHint.setAlpha(0f);
+        LinearLayout.LayoutParams chl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        chl.topMargin = Ui.dp(this, 10);
+        catCol.addView(catHint, chl);
+        catBox = catCol;
         if (!live) cols.addView(catBox, new LinearLayout.LayoutParams(Ui.dp(this, 300), ViewGroup.LayoutParams.MATCH_PARENT));
 
         // ---- content column
@@ -351,10 +365,10 @@ public class BrowseActivity extends Activity {
         });
         catList.setOnItemLongClickListener(new AdapterView.OnItemLongClickListener() {
             public boolean onItemLongClick(AdapterView<?> p, View v, int pos, long id) {
-                // Hold OK: on Fire TV remotes (which have ☰ for hiding) it favourites the category;
-                // on remotes without ☰ it hides it.
+                // Hold OK: on Fire TV (☰ hides) it favourites the category straight away;
+                // on Google TV / Android TV it asks: favourite or hide.
                 if (Ui.hasMenuKey()) toggleFavCategory(pos);
-                else hideAt(pos);
+                else categoryMenu(pos);
                 return true;
             }
         });
@@ -470,8 +484,8 @@ public class BrowseActivity extends Activity {
         boolean fav = prefs.isFavCategory(type, c.id);
         new android.app.AlertDialog.Builder(this, Ui.DARK ? android.R.style.Theme_Material_Dialog_Alert : android.R.style.Theme_Material_Light_Dialog_Alert)
                 .setTitle(c.name)
-                .setItems(new String[]{fav ? "♥  Remove from favourite categories" : "♡  Add to favourite categories",
-                        "Hide this category", "Cancel"}, new android.content.DialogInterface.OnClickListener() {
+                .setItems(new String[]{fav ? "♥  Remove from favourites" : "♡  Favourite",
+                        "Hide"}, new android.content.DialogInterface.OnClickListener() {
                     public void onClick(android.content.DialogInterface d, int which) {
                         if (which == 0) toggleFavCategory(pos);
                         else if (which == 1) hideCategory(c);
@@ -484,7 +498,7 @@ public class BrowseActivity extends Activity {
     private static String catTip() {
         return Ui.hasMenuKey()
                 ? "Press ☰ on a category to hide it, or hold OK to make it a favourite (it moves near the top with a ♥)."
-                : "Hold OK on a category to hide it.";
+                : "Hold OK on a category to make it a favourite (it moves near the top with a ♥) or to hide it.";
     }
 
     private void hideAt(int pos) {
