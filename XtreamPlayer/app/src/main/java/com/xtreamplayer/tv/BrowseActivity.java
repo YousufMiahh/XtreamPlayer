@@ -351,7 +351,10 @@ public class BrowseActivity extends Activity {
         });
         catList.setOnItemLongClickListener(new AdapterView.OnItemLongClickListener() {
             public boolean onItemLongClick(AdapterView<?> p, View v, int pos, long id) {
-                categoryMenu(pos);
+                // Hold OK: on Fire TV remotes (which have ☰ for hiding) it favourites the category;
+                // on remotes without ☰ it hides it.
+                if (Ui.hasMenuKey()) toggleFavCategory(pos);
+                else hideAt(pos);
                 return true;
             }
         });
@@ -441,7 +444,7 @@ public class BrowseActivity extends Activity {
         if (live) {
             Coach.show(this, "live", true,
                     new Coach.Step(catBox, "Categories",
-                            "Search is at the top. " + menu + " on a category to make it a favourite (it moves near the top with a ♥) or to hide it."),
+                            "Search is at the top. " + catTip()),
                     new Coach.Step(midBox, "Channels",
                             "Pause on a channel to see a live preview. OK watches it full screen. " + menu + " on a channel to add it to your favourites."),
                     new Coach.Step(infoPanel, "What's on",
@@ -453,7 +456,7 @@ public class BrowseActivity extends Activity {
             Coach.show(this, "vod", true,
                     new Coach.Step(catBox, "Categories",
                             "Search this section at the top, then your favourites, Continue Watching and everything else. "
-                                    + menu + " on a category to favourite or hide it."),
+                                    + catTip()),
                     new Coach.Step(midBox, "Pick something",
                             "OK opens the details page, with Play, Resume, the trailer and Favourite. " + menu + " here adds it to your favourites."));
         }
@@ -477,10 +480,24 @@ public class BrowseActivity extends Activity {
                 .show();
     }
 
-    /** Hidden categories come back from Settings → Hidden Categories. */
+    /** What the remote does on a category (Fire TV remotes have ☰, others only hold OK). */
+    private static String catTip() {
+        return Ui.hasMenuKey()
+                ? "Press ☰ on a category to hide it, or hold OK to make it a favourite (it moves near the top with a ♥)."
+                : "Hold OK on a category to hide it.";
+    }
+
+    private void hideAt(int pos) {
+        if (pos < 0 || pos >= catAdapter.getCount()) return;
+        Item c = catAdapter.getItem(pos);
+        if (!c.id.startsWith("__")) hideCategory(c);
+    }
+
+    /** No questions asked; it can come back from Settings → Hidden Categories. */
     private void hideCategory(Item c) {
         Filters.setCategoryHidden(prefs, type, c.id, true);
-        android.widget.Toast.makeText(this, "Hidden — " + c.name + ". Bring it back in Settings → Hidden Categories.", android.widget.Toast.LENGTH_LONG).show();
+        if (prefs.isFavCategory(type, c.id)) prefs.toggleFavCategory(type, c.id);
+        android.widget.Toast.makeText(this, "Hidden: " + c.name + "  (Settings → Hidden Categories to bring it back)", android.widget.Toast.LENGTH_SHORT).show();
         boolean wasOpen = currentCat != null && currentCat.id.equals(c.id);
         reloadCategories(wasOpen);
     }
@@ -712,7 +729,7 @@ public class BrowseActivity extends Activity {
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
         if (keyCode == KeyEvent.KEYCODE_MENU && catList.hasFocus()) {
-            categoryMenu(catList.getSelectedItemPosition());
+            hideAt(catList.getSelectedItemPosition()); // ☰ hides the category straight away
             return true;
         }
         if (keyCode == KeyEvent.KEYCODE_MENU && content.hasFocus()) {
