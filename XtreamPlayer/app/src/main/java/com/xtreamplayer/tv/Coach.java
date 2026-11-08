@@ -193,7 +193,19 @@ public final class Coach {
             previousFocus = a.getCurrentFocus();
             requestFocus();
             animate().alpha(1f).setDuration(250).start();
-            next();
+            whenLaidOut(new Runnable() { public void run() { next(); } });
+        }
+
+        /**
+         * The overlay has no size until the screen has laid it out; placing the first caption
+         * before that put it half off the screen.
+         */
+        private void whenLaidOut(final Runnable r) {
+            if (getWidth() > 0 && getHeight() > 0) {
+                r.run();
+                return;
+            }
+            postDelayed(new Runnable() { public void run() { whenLaidOut(r); } }, 16);
         }
 
         @Override
@@ -262,6 +274,9 @@ public final class Coach {
                     x = to.right + gap + cw < W ? to.right + gap : Math.max(gap, to.left - gap - cw);
                 }
             }
+            // Always fully on screen
+            x = Math.max(gap, Math.min(x, W - cw - gap));
+            y = Math.max(gap, Math.min(y, H - ch - gap));
             card.animate().cancel();
             card.setAlpha(0f);
             card.setTranslationX(x);
