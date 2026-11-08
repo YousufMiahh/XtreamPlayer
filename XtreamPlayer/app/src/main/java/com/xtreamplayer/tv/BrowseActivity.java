@@ -933,9 +933,19 @@ public class BrowseActivity extends Activity {
             int listY = top + infoH + Ui.dp(this, 12);
             place(catBox, pad - catW - gap, top, catW, fullH); // folds away off the left edge
             place(infoPanel, pad, top, W - 2 * pad, infoH);
-            place(focusLabel, pad + Ui.dp(this, 8), listY, W - 2 * pad, labelH);
+            boolean g = mode == MODE_GUIDE;
+            int hintH = Ui.dp(this, 40);
+            if (g) { // the guide, with its button hints in a line along the bottom where they're always visible
+                place(guide, pad, listY, W - 2 * pad, H - listY - bottom - hintH);
+                place(focusLabel, pad + Ui.dp(this, 8), H - bottom - hintH + Ui.dp(this, 6), W - 2 * pad, hintH);
+                String menu = Ui.hasMenuKey() ? "☰" : "Hold OK";
+                focusLabel.setText("OK  Watch        " + menu + "  Full programme details        ▲▼  Channels        ◀ ▶  Programmes        Back  Channel list");
+            } else {
+                place(focusLabel, pad + Ui.dp(this, 8), listY, W - 2 * pad, labelH);
+                place(guide, pad, listY, W - 2 * pad, H - listY - bottom);
+                focusLabel.setText((currentCat == null ? "" : currentCat.name + "      ") + "◀  Categories      ▶  TV Guide");
+            }
             place(midBox, pad, listY + labelH, W - 2 * pad, H - listY - labelH - bottom);
-            place(guide, pad, listY, W - 2 * pad, H - listY - bottom);
             info.setOrientation(LinearLayout.HORIZONTAL);
             logoLp.width = Math.round(inner * 16f / 9f);
             logoLp.height = ViewGroup.LayoutParams.MATCH_PARENT;
@@ -944,11 +954,9 @@ public class BrowseActivity extends Activity {
             textLp.weight = 1;
             textLp.leftMargin = Ui.dp(this, 32);
             fade(catBox, false);
-            boolean g = mode == MODE_GUIDE;
-            fade(focusLabel, !g);
+            fade(focusLabel, true);
             fade(midBox, !g);
             fade(guide, g);
-            focusLabel.setText((currentCat == null ? "" : currentCat.name + "      ") + "◀  Categories      ▶  TV Guide");
         }
         setPanelHint(mode == MODE_GUIDE);
         logoBoxView.setLayoutParams(logoLp);
