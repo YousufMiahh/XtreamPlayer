@@ -56,7 +56,7 @@ final class FilterSettings {
                     labels[i] = (name.equals(k) ? k : k + "  ·  " + name) + "   (" + n + (n == 1 ? " category)" : " categories)");
                     shown[i] = !hidden.contains(k);
                 }
-                new AlertDialog.Builder(a, dialogTheme())
+                final AlertDialog dlg = new AlertDialog.Builder(a, dialogTheme())
                         .setTitle("Countries & languages to show")
                         .setMultiChoiceItems(labels, shown, new DialogInterface.OnMultiChoiceClickListener() {
                             public void onClick(DialogInterface d, int which, boolean on) { shown[which] = on; }
@@ -72,14 +72,41 @@ final class FilterSettings {
                                 if (value != null) value.setText(countriesLabel(prefs));
                             }
                         })
-                        .setNeutralButton("Show all", new DialogInterface.OnClickListener() {
-                            public void onClick(DialogInterface d, int w) {
-                                Filters.setHiddenTags(prefs, new HashSet<String>());
-                                if (value != null) value.setText(countriesLabel(prefs));
-                            }
-                        })
+                        .setNeutralButton("Unselect all", null) // wired below so it doesn't close the list
                         .setNegativeButton("Cancel", null)
-                        .show();
+                        .create();
+                dlg.setOnShowListener(new DialogInterface.OnShowListener() {
+                    public void onShow(DialogInterface d) {
+                        final android.widget.Button all = dlg.getButton(DialogInterface.BUTTON_NEUTRAL);
+                        final Runnable label = new Runnable() {
+                            public void run() {
+                                boolean any = false;
+                                for (boolean b : shown) any |= b;
+                                all.setText(any ? "Unselect all" : "Select all");
+                            }
+                        };
+                        label.run();
+                        all.setOnClickListener(new android.view.View.OnClickListener() {
+                            public void onClick(android.view.View v) {
+                                boolean any = false;
+                                for (boolean b : shown) any |= b;
+                                // Untick everything (then tick just the ones you want), or tick everything again
+                                for (int i = 0; i < shown.length; i++) {
+                                    shown[i] = !any;
+                                    dlg.getListView().setItemChecked(i, !any);
+                                }
+                                label.run();
+                            }
+                        });
+                        dlg.getListView().setOnItemClickListener(new android.widget.AdapterView.OnItemClickListener() {
+                            public void onItemClick(android.widget.AdapterView<?> p, android.view.View v, int i, long id) {
+                                shown[i] = dlg.getListView().isItemChecked(i);
+                                label.run();
+                            }
+                        });
+                    }
+                });
+                dlg.show();
             }
         });
     }
