@@ -445,6 +445,14 @@ public class PlayerActivity extends Activity implements Engine.Listener {
     }
 
     public void onTracksChanged() {
+        // The sound is in a format this device can't play with the Android player (DTS, TrueHD…):
+        // the Android player would carry on silently, so move to VLC, which decodes it itself.
+        if (engine != null && !usingVlc && !isLive() && prefs.engineMode() == 0 && !prefs.vlcBroken()
+                && prefs.playerChoice(current()) != Boolean.FALSE && engine.audioUnsupported()) {
+            prefs.rememberVlc(current());
+            switchEngine(true, "This sound format needs the VLC player — switching");
+            return;
+        }
         if (trackPanel.getVisibility() == View.VISIBLE) buildTrackRows(false);
     }
 

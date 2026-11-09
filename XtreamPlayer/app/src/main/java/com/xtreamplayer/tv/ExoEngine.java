@@ -127,6 +127,16 @@ public class ExoEngine implements Engine {
         return out;
     }
 
+    public boolean audioUnsupported() {
+        boolean any = false;
+        for (Tracks.Group g : player.getCurrentTracks().getGroups()) {
+            if (g.getType() != C.TRACK_TYPE_AUDIO) continue;
+            any = true;
+            for (int i = 0; i < g.length; i++) if (g.isTrackSupported(i)) return false;
+        }
+        return any;
+    }
+
     public void select(Track t) {
         Tracks.Group g = (Tracks.Group) t.group;
         int exoType = t.type == TEXT ? C.TRACK_TYPE_TEXT : C.TRACK_TYPE_AUDIO;

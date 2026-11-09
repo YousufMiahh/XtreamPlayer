@@ -212,7 +212,19 @@ public class Prefs {
     public Boolean playerChoice(Item it) {
         if (set("vlc_items").contains(it.key())) return Boolean.TRUE;
         if (set("exo_items").contains(it.key())) return Boolean.FALSE;
+        // Every episode of a series whose audio needed VLC
+        if (Item.EPISODE.equals(it.type) && it.parentId != null && set("vlc_items").contains("series:" + it.parentId)) return Boolean.TRUE;
         return null;
+    }
+
+    /** Remember VLC for this title, and for the whole series if it's an episode (the other episodes are almost always the same format). */
+    public void rememberVlc(Item it) {
+        setPlayerChoice(it, true);
+        if (Item.EPISODE.equals(it.type) && it.parentId != null) {
+            Set<String> v = new HashSet<>(set("vlc_items"));
+            v.add("series:" + it.parentId);
+            sp.edit().putStringSet(ns() + "vlc_items", v).apply();
+        }
     }
 
     public void setPlayerChoice(Item it, boolean vlc) {
