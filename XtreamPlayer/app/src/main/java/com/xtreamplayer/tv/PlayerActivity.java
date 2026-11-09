@@ -365,8 +365,9 @@ public class PlayerActivity extends Activity implements Engine.Listener {
     private boolean wantsVlc(Item it) {
         // Live TV always uses VLC (the Android player doesn't cope with these live streams),
         // unless "Android player for everything" was picked in Settings.
-        if (Item.LIVE.equals(it.type)) return prefs.engineMode() != 1;
+        if (Item.LIVE.equals(it.type)) return prefs.engineMode() != 1 || (prefs.audioDelay(it) != 0 && !prefs.vlcBroken());
         if (prefs.vlcBroken()) return false; // VLC crashed on this TV before
+        if (prefs.audioDelay(it) != 0) return true; // audio sync set for this title: only VLC can do it
         int mode = prefs.engineMode();
         if (mode == 2) return true;
         if (mode == 1) return false;
@@ -528,7 +529,7 @@ public class PlayerActivity extends Activity implements Engine.Listener {
         errorText.setVisibility(View.GONE);
         lastRendered = -1;
         stallTicks = 0;
-        engine.setAudioDelay(isLive() ? prefs.audioDelay(current()) : 0); // the channel's own audio sync
+        engine.setAudioDelay(prefs.audioDelay(current())); // this channel's / title's own audio sync
         try {
             engine.load(api.playUrl(current(), liveFormat), startMs);
         } catch (Throwable t) { // VLC failed to start: record it and use the Android player
@@ -764,7 +765,7 @@ public class PlayerActivity extends Activity implements Engine.Listener {
         }
         if (audio.isEmpty()) note("No audio tracks found");
 
-        if (isLive()) audioSyncRows();
+        audioSyncRows();
 
         header("Subtitle Size");
         for (int s = 0; s < SettingsActivity.SUB_SIZES.length; s++) {
@@ -813,16 +814,6 @@ public class PlayerActivity extends Activity implements Engine.Listener {
         final Item ch = current();
         final int d = prefs.audioDelay(ch);
         header("Audio Sync  ·  " + syncLabel(d));
-        if (!usingVlc) {
-            option("Switch to the VLC player to adjust", false, new Runnable() {
-                public void run() {
-                    hidePanels();
-                    switchEngine(true, "Switched to VLC player");
-                }
-            });
-            note("Audio sync needs the VLC player.");
-            return;
-        }
         option("Sound is late  —  bring it forward", false, new Runnable() {
             public void run() { nudgeSync(ch, -SYNC_STEP); }
         });
@@ -836,12 +827,25 @@ public class PlayerActivity extends Activity implements Engine.Listener {
                 status("Audio sync reset");
             }
         });
-        note("Press repeatedly in 0.1s steps. Remembered for this channel.");
+        note("Press repeatedly in 0.1s steps. Remembered for this "
+                + (isLive() ? "channel" : Item.EPISODE.equals(ch.type) ? "series" : "film")
+                + (usingVlc ? "." : " (switches to the VLC player, which can shift the sound)."));
     }
 
     private void nudgeSync(Item ch, int step) {
+        if (!usingVlc && prefs.vlcBroken()) {
+            status("Audio sync needs the VLC player, which isn't working on this device");
+            return;
+        }
         int d = Math.max(-SYNC_MAX, Math.min(SYNC_MAX, prefs.audioDelay(ch) + step));
         prefs.setAudioDelay(ch, d);
+        if (!usingVlc) {
+            // Only VLC can shift the sound: move this to VLC (and keep it there next time)
+            if (!isLive()) prefs.rememberVlc(ch);
+            hidePanels();
+            switchEngine(true, "Switched to VLC to adjust audio sync: " + syncLabel(d));
+            return;
+        }
         engine.setAudioDelay(d);
         status("Audio sync: " + syncLabel(d));
     }

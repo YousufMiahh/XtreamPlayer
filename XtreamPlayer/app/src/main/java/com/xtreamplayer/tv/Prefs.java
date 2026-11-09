@@ -178,13 +178,21 @@ public class Prefs {
     public void setLiveFormat(String f) { sp.edit().putString("live_format", f).apply(); }
 
     /** 0 small, 1 medium, 2 large, 3 extra large. */
-    /** Live TV audio sync for a channel, in ms (negative = sound brought earlier). Per account. */
-    public int audioDelay(Item it) { return it == null ? 0 : sp.getInt(ns() + "adelay_" + it.id, 0); }
+    /**
+     * Audio sync in ms (negative = sound brought earlier), per account: per channel, per movie,
+     * and for the whole series for episodes (they're almost always encoded the same way).
+     */
+    public int audioDelay(Item it) { return it == null ? 0 : sp.getInt(syncKey(it), 0); }
 
     public void setAudioDelay(Item it, int ms) {
         if (it == null) return;
-        if (ms == 0) sp.edit().remove(ns() + "adelay_" + it.id).apply();
-        else sp.edit().putInt(ns() + "adelay_" + it.id, ms).apply();
+        if (ms == 0) sp.edit().remove(syncKey(it)).apply();
+        else sp.edit().putInt(syncKey(it), ms).apply();
+    }
+
+    private String syncKey(Item it) {
+        if (Item.EPISODE.equals(it.type) && it.parentId != null) return ns() + "adelay_series_" + it.parentId;
+        return ns() + "adelay_" + it.type + "_" + it.id;
     }
 
     public int subtitleSize() { return sp.getInt("sub_size", 1); }
