@@ -831,6 +831,25 @@ public class BrowseActivity extends Activity implements TopBar.Reselect {
      */
     @Override
     public boolean dispatchKeyEvent(KeyEvent e) {
+        // ▶ from the categories always goes to the top of the list (first channel / poster),
+        // not whatever happens to be level with the category
+        if (e.getAction() == KeyEvent.ACTION_DOWN && e.getKeyCode() == KeyEvent.KEYCODE_DPAD_RIGHT && catList.hasFocus()) {
+            int pos = catList.getSelectedItemPosition();
+            boolean onSearch = pos >= 0 && pos < catAdapter.getCount() && SEARCH.equals(catAdapter.getItem(pos).id);
+            if (!onSearch && pos >= 0) {
+                Async.MAIN.removeCallbacks(pendingCat);
+                markPicked();
+                Item c = catAdapter.getItem(pos);
+                if (currentCat == null || !c.id.equals(currentCat.id)) {
+                    openCategory(c, pos, true); // not open yet: open it and go to its first item when it's loaded
+                } else if (contentAdapter.getCount() > 0) {
+                    content.setSelection(0);
+                    content.requestFocus();
+                    content.setSelection(0);
+                }
+                return true;
+            }
+        }
         // ▼ from the top bar always goes to the top of the categories (Search)
         if (e.getAction() == KeyEvent.ACTION_DOWN && e.getKeyCode() == KeyEvent.KEYCODE_DPAD_DOWN && TopBar.tabFocused(this)) {
             focusTopCategory();
