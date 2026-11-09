@@ -239,6 +239,8 @@ public final class Adapters {
     /** Plain text rows (categories, settings-like lists). */
     public static class TextRows extends ItemAdapter {
         public int active = -1;
+        /** While the top bar has focus, no category is marked (it comes back when you move down). */
+        public boolean hideActive;
 
         public TextRows(Context c) { super(c); }
 
@@ -248,7 +250,7 @@ public final class Adapters {
             cell.glide = hasGlider(list);
             Item it = getItem(pos);
             cell.bind(null, null, it.name, it.info, it.num);
-            cell.setActive(pos == active);
+            cell.setActive(!hideActive && pos == active);
             cell.setHot(isHot(pos), false);
             return cell;
         }

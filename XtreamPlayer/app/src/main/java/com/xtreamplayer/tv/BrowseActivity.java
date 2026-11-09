@@ -26,7 +26,7 @@ import java.util.List;
  * a poster grid for Movies and Series.
  */
 @SuppressLint("UnsafeOptInUsageError")
-public class BrowseActivity extends Activity {
+public class BrowseActivity extends Activity implements TopBar.Reselect {
     private static final String FAV = "__fav";
     private static final String ALL = "__all";
     private static final String RECENT = "__recent";
@@ -119,6 +119,16 @@ public class BrowseActivity extends Activity {
         });
         catAdapter = new Adapters.TextRows(this);
         catAdapter.attach(catList);
+        // No category marked while you're up in the top bar; the list goes back to the top there
+        root.getViewTreeObserver().addOnGlobalFocusChangeListener(new android.view.ViewTreeObserver.OnGlobalFocusChangeListener() {
+            public void onGlobalFocusChanged(View oldFocus, View newFocus) {
+                boolean tab = TopBar.tabFocused(BrowseActivity.this);
+                if (tab == catAdapter.hideActive) return;
+                catAdapter.hideActive = tab;
+                if (tab && catAdapter.getCount() > 0) catList.setSelection(0);
+                catAdapter.notifyDataSetChanged();
+            }
+        });
         // the category list with its button hint underneath (shown while you're in the list)
         LinearLayout catCol = new LinearLayout(this);
         catCol.setOrientation(LinearLayout.VERTICAL);
@@ -416,8 +426,12 @@ public class BrowseActivity extends Activity {
                 int start = !prefs.favs(type).isEmpty() ? 1
                         : !specialList(all.get(2).id).isEmpty() ? 2
                         : (all.size() > firstReal ? firstReal : firstReal - 1);
-                if (!TopBar.tabFocused(BrowseActivity.this)) catList.requestFocus();
-                catList.setSelection(start);
+                // The list starts at the top (Search) whether you arrived by hovering the tab or
+                // pressing OK on it; the category shown underneath is still the usual one.
+                boolean fromTab = TopBar.tabFocused(BrowseActivity.this);
+                catAdapter.hideActive = fromTab;
+                if (!fromTab) catList.requestFocus();
+                catList.setSelection(0);
                 Async.MAIN.postDelayed(new Runnable() { public void run() { if (!isFinishing()) tour(); } }, 600);
                 openCategory(all.get(start), start, false);
             }
@@ -501,6 +515,17 @@ public class BrowseActivity extends Activity {
                 : "Hold OK on a category to make it a favourite (it moves near the top with a ♥) or to hide it.";
     }
 
+    /** OK on this section's own tab: to the top of the categories. */
+    public void onTabReselected() { focusTopCategory(); }
+
+    private void focusTopCategory() {
+        if (catAdapter.getCount() == 0) return;
+        Async.MAIN.removeCallbacks(pendingCat);
+        catList.setSelection(0);
+        catList.requestFocus();
+        catList.setSelection(0);
+    }
+
     private void hideAt(int pos) {
         if (pos < 0 || pos >= catAdapter.getCount()) return;
         Item c = catAdapter.getItem(pos);
@@ -560,6 +585,7 @@ public class BrowseActivity extends Activity {
         if (pos < 0 || pos >= catAdapter.getCount()) return;
         Item c = catAdapter.getItem(pos);
         if (currentCat != null && c.id.equals(currentCat.id)) return;
+        if (SEARCH.equals(c.id)) return; // landing on Search does nothing until OK
         openCategory(c, pos, false);
     }
 
@@ -783,6 +809,11 @@ public class BrowseActivity extends Activity {
      */
     @Override
     public boolean dispatchKeyEvent(KeyEvent e) {
+        // ▼ from the top bar always goes to the top of the categories (Search)
+        if (e.getAction() == KeyEvent.ACTION_DOWN && e.getKeyCode() == KeyEvent.KEYCODE_DPAD_DOWN && TopBar.tabFocused(this)) {
+            focusTopCategory();
+            return true;
+        }
         // Live TV: ▶ from the channel list = bigger preview, ▶ again = TV guide; ◀ steps back
         if (live && e.getAction() == KeyEvent.ACTION_DOWN && e.getRepeatCount() == 0 && content.hasFocus() && contentAdapter.getCount() > 0) {
             if (e.getKeyCode() == KeyEvent.KEYCODE_DPAD_RIGHT) {
