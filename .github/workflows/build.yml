@@ -38,13 +38,14 @@ jobs:
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
           set -o pipefail
-          gradle assembleRelease --no-daemon --stacktrace 2>&1 | tee "$GITHUB_WORKSPACE/build.log"
+          gradle lintRelease assembleRelease --no-daemon --stacktrace 2>&1 | tee "$GITHUB_WORKSPACE/build.log"
 
       - name: Report build errors
         if: failure()
         run: |
           # Surface the real error as one annotation so it can be read without opening the log.
-          msg=$(sed -n '/What went wrong/,/\* Try:/p' build.log | head -60)
+          msg=$(grep -E ": Error: " build.log | head -30)
+          [ -z "$msg" ] && msg=$(sed -n '/What went wrong/,/\* Try:/p' build.log | head -60)
           [ -z "$msg" ] && msg=$(grep -nE "error:|ERROR|Could not|FAILED" build.log | head -40)
           msg="${msg//'%'/'%25'}"; msg="${msg//$'\n'/'%0A'}"; msg="${msg//$'\r'/'%0D'}"
           echo "::error title=Build failed::$msg"

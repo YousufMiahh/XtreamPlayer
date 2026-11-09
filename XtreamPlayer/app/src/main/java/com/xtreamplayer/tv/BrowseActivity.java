@@ -965,11 +965,16 @@ public class BrowseActivity extends Activity implements TopBar.Reselect {
             android.transition.ChangeBounds cb = new android.transition.ChangeBounds();
             cb.setDuration(420);
             cb.setInterpolator(new android.view.animation.DecelerateInterpolator(2.2f));
-            cb.addListener(new android.transition.TransitionListenerAdapter() {
+            // (TransitionListenerAdapter only exists from Android 8; Fire OS 5/6 sticks are older)
+            cb.addListener(new android.transition.Transition.TransitionListener() {
                 @Override public void onTransitionEnd(android.transition.Transition t) {
                     Adapters.refresh(content); // re-seat the gliding highlights
                     Adapters.refresh(catList);
                 }
+                @Override public void onTransitionStart(android.transition.Transition t) {}
+                @Override public void onTransitionCancel(android.transition.Transition t) {}
+                @Override public void onTransitionPause(android.transition.Transition t) {}
+                @Override public void onTransitionResume(android.transition.Transition t) {}
             });
             android.transition.TransitionManager.beginDelayedTransition(stage, cb);
         }

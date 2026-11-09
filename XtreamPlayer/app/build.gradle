@@ -45,7 +45,12 @@ android {
 
     lint {
         checkReleaseBuilds false
-        abortOnError false
+        // The build checks only one thing: code that needs a newer Android than the oldest
+        // supported device (that crashes there, e.g. the TV guide on Fire OS 6).
+        checkOnly 'NewApi'
+        abortOnError true
+        textReport true
+        textOutput file('stdout')
     }
 
     compileOptions {
