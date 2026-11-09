@@ -527,6 +527,27 @@ public class BrowseActivity extends Activity implements TopBar.Reselect {
                 : "Hold OK on a category to make it a favourite (it moves near the top with a ♥) or to hide it.";
     }
 
+    /**
+     * Focus the search box and bring up the keyboard. The box has only just been made visible,
+     * so the keyboard is asked for once it's laid out (and once more shortly after, as some
+     * Fire TV keyboards ignore the first request).
+     */
+    private void openKeyboard() {
+        searchBox.requestFocus();
+        final android.view.inputmethod.InputMethodManager imm =
+                (android.view.inputmethod.InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
+        if (imm == null) return;
+        Runnable show = new Runnable() {
+            public void run() {
+                if (isFinishing() || searchBox.getVisibility() != View.VISIBLE) return;
+                if (!searchBox.hasFocus()) searchBox.requestFocus();
+                imm.showSoftInput(searchBox, 0);
+            }
+        };
+        searchBox.post(show);
+        searchBox.postDelayed(show, 250);
+    }
+
     private void markPicked() {
         if (pickedCategory) return;
         pickedCategory = true;
@@ -626,11 +647,7 @@ public class BrowseActivity extends Activity implements TopBar.Reselect {
         searchBox.setVisibility(searching ? View.VISIBLE : View.GONE);
         if (searching) {
             show(searchResults, false);
-            if (focusContent) { // OK on "Search": straight into the box with the keyboard
-                searchBox.requestFocus();
-                android.view.inputmethod.InputMethodManager imm = (android.view.inputmethod.InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
-                if (imm != null) imm.showSoftInput(searchBox, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT);
-            }
+            if (focusContent) openKeyboard(); // OK or ▶ on "Search": straight into the box with the keyboard
             return;
         }
         if (isSpecial(cat.id)) {
@@ -835,13 +852,12 @@ public class BrowseActivity extends Activity implements TopBar.Reselect {
         // not whatever happens to be level with the category
         if (e.getAction() == KeyEvent.ACTION_DOWN && e.getKeyCode() == KeyEvent.KEYCODE_DPAD_RIGHT && catList.hasFocus()) {
             int pos = catList.getSelectedItemPosition();
-            boolean onSearch = pos >= 0 && pos < catAdapter.getCount() && SEARCH.equals(catAdapter.getItem(pos).id);
-            if (!onSearch && pos >= 0) {
+            if (pos >= 0 && pos < catAdapter.getCount()) {
                 Async.MAIN.removeCallbacks(pendingCat);
                 markPicked();
                 Item c = catAdapter.getItem(pos);
-                if (currentCat == null || !c.id.equals(currentCat.id)) {
-                    openCategory(c, pos, true); // not open yet: open it and go to its first item when it's loaded
+                if (currentCat == null || !c.id.equals(currentCat.id) || SEARCH.equals(c.id)) {
+                    openCategory(c, pos, true); // not open yet (or Search: open the keyboard): open it and go to its first item / the box
                 } else if (contentAdapter.getCount() > 0) {
                     content.setSelection(0);
                     content.requestFocus();
