@@ -178,6 +178,15 @@ public class Prefs {
     public void setLiveFormat(String f) { sp.edit().putString("live_format", f).apply(); }
 
     /** 0 small, 1 medium, 2 large, 3 extra large. */
+    /** Live TV audio sync for a channel, in ms (negative = sound brought earlier). Per account. */
+    public int audioDelay(Item it) { return it == null ? 0 : sp.getInt(ns() + "adelay_" + it.id, 0); }
+
+    public void setAudioDelay(Item it, int ms) {
+        if (it == null) return;
+        if (ms == 0) sp.edit().remove(ns() + "adelay_" + it.id).apply();
+        else sp.edit().putInt(ns() + "adelay_" + it.id, ms).apply();
+    }
+
     public int subtitleSize() { return sp.getInt("sub_size", 1); }
     public void setSubtitleSize(int s) { sp.edit().putInt("sub_size", s).apply(); }
 

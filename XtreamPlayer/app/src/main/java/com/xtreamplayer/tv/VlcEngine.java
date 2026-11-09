@@ -50,6 +50,7 @@ public class VlcEngine implements Engine {
                             applyPreferredTracks();
                         }
                         if (volume < 1f) mp.setVolume(Math.round(volume * 100));
+                        if (audioDelayMs != 0) mp.setAudioDelay(audioDelayMs * 1000L);
                         l.onPlayingChanged(true);
                         break;
                     case MediaPlayer.Event.Paused:
@@ -128,6 +129,13 @@ public class VlcEngine implements Engine {
     }
 
     private volatile float volume = 1f;
+    private volatile long audioDelayMs;
+
+    /** Kept and applied again whenever playback starts (VLC resets it for each new stream). */
+    public boolean setAudioDelay(long ms) {
+        audioDelayMs = ms;
+        return mp.setAudioDelay(ms * 1000L);
+    }
 
     /** VLC only takes a volume once audio is running, so it's applied again when playback starts. */
     public void setVolume(float v) {

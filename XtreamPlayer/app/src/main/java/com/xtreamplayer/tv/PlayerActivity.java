@@ -528,6 +528,7 @@ public class PlayerActivity extends Activity implements Engine.Listener {
         errorText.setVisibility(View.GONE);
         lastRendered = -1;
         stallTicks = 0;
+        engine.setAudioDelay(isLive() ? prefs.audioDelay(current()) : 0); // the channel's own audio sync
         try {
             engine.load(api.playUrl(current(), liveFormat), startMs);
         } catch (Throwable t) { // VLC failed to start: record it and use the Android player
@@ -763,6 +764,8 @@ public class PlayerActivity extends Activity implements Engine.Listener {
         }
         if (audio.isEmpty()) note("No audio tracks found");
 
+        if (isLive()) audioSyncRows();
+
         header("Subtitle Size");
         for (int s = 0; s < SettingsActivity.SUB_SIZES.length; s++) {
             final int size = s;
@@ -801,6 +804,52 @@ public class PlayerActivity extends Activity implements Engine.Listener {
         } else if (focusSelected && firstSelected != null) {
             firstSelected.requestFocus();
         }
+    }
+
+    private static final int SYNC_STEP = 100, SYNC_MAX = 5000;
+
+    /** Live TV: nudge the sound against the picture, remembered for this channel. */
+    private void audioSyncRows() {
+        final Item ch = current();
+        final int d = prefs.audioDelay(ch);
+        header("Audio Sync  ·  " + syncLabel(d));
+        if (!usingVlc) {
+            option("Switch to the VLC player to adjust", false, new Runnable() {
+                public void run() {
+                    hidePanels();
+                    switchEngine(true, "Switched to VLC player");
+                }
+            });
+            note("Audio sync needs the VLC player.");
+            return;
+        }
+        option("Sound is late  —  bring it forward", false, new Runnable() {
+            public void run() { nudgeSync(ch, -SYNC_STEP); }
+        });
+        option("Sound is early  —  hold it back", false, new Runnable() {
+            public void run() { nudgeSync(ch, SYNC_STEP); }
+        });
+        option("Reset", d == 0, new Runnable() {
+            public void run() {
+                prefs.setAudioDelay(ch, 0);
+                engine.setAudioDelay(0);
+                status("Audio sync reset");
+            }
+        });
+        note("Press repeatedly in 0.1s steps. Remembered for this channel.");
+    }
+
+    private void nudgeSync(Item ch, int step) {
+        int d = Math.max(-SYNC_MAX, Math.min(SYNC_MAX, prefs.audioDelay(ch) + step));
+        prefs.setAudioDelay(ch, d);
+        engine.setAudioDelay(d);
+        status("Audio sync: " + syncLabel(d));
+    }
+
+    private static String syncLabel(int ms) {
+        if (ms == 0) return "normal";
+        String s = String.format(Locale.UK, "%.1fs", Math.abs(ms) / 1000f);
+        return ms < 0 ? "sound " + s + " earlier" : "sound " + s + " later";
     }
 
     private void header(String s) {

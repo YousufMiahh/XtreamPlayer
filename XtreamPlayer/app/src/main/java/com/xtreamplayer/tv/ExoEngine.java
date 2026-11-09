@@ -69,6 +69,8 @@ public class ExoEngine implements Engine {
         applySubtitleStyle();
     }
 
+    public boolean setAudioDelay(long ms) { return ms == 0; } // not supported by the Android player
+
     public void setVolume(float v) { if (player != null) player.setVolume(v); }
 
     public void stopPlayback() {

@@ -60,6 +60,12 @@ public interface Engine {
     /** True if the stream has audio but none of it can be played by this engine (e.g. DTS on the Android player). */
     boolean audioUnsupported();
 
+    /**
+     * Shift the sound against the picture, in milliseconds (negative = sound earlier).
+     * @return false if this engine can't (the Android player).
+     */
+    boolean setAudioDelay(long ms);
+
     /** 0 = muted, 1 = full volume. */
     void setVolume(float v);
 
