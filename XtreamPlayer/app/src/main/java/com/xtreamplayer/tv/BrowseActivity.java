@@ -56,6 +56,8 @@ public class BrowseActivity extends Activity implements TopBar.Reselect {
 
     private ListView catList;
     private TextView catHint;
+    /** Whether you've opened a category yourself (until then the one shown isn't marked in the list). */
+    private boolean pickedCategory;
     private AbsListView content;
     private Adapters.TextRows catAdapter;
     private Adapters.ItemAdapter contentAdapter;
@@ -123,8 +125,9 @@ public class BrowseActivity extends Activity implements TopBar.Reselect {
         root.getViewTreeObserver().addOnGlobalFocusChangeListener(new android.view.ViewTreeObserver.OnGlobalFocusChangeListener() {
             public void onGlobalFocusChanged(View oldFocus, View newFocus) {
                 boolean tab = TopBar.tabFocused(BrowseActivity.this);
-                if (tab == catAdapter.hideActive) return;
-                catAdapter.hideActive = tab;
+                boolean hide = tab || !pickedCategory;
+                if (hide == catAdapter.hideActive) return;
+                catAdapter.hideActive = hide;
                 if (tab && catAdapter.getCount() > 0) catList.setSelection(0);
                 catAdapter.notifyDataSetChanged();
             }
@@ -134,7 +137,15 @@ public class BrowseActivity extends Activity implements TopBar.Reselect {
         catCol.setOrientation(LinearLayout.VERTICAL);
         catCol.setClipChildren(false);
         catCol.setClipToPadding(false);
-        catCol.addView(Glider.wrap(this, catList, new Glider[1]), new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
+        final View catWrap = Glider.wrap(this, catList, new Glider[1]);
+        // Rows may spill sideways (highlight glow) but not down over the hint underneath
+        catWrap.addOnLayoutChangeListener(new View.OnLayoutChangeListener() {
+            public void onLayoutChange(View v, int l, int t, int r, int b, int ol, int ot, int or, int ob) {
+                int spill = Ui.dp(v.getContext(), 60);
+                v.setClipBounds(new android.graphics.Rect(-spill, -spill, (r - l) + spill, b - t));
+            }
+        });
+        catCol.addView(catWrap, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
         catHint = Ui.text(this, Ui.hasMenuKey() ? "Hold OK  ♥ Favourite      ☰  Hide" : "Hold OK  Favourite or hide", 14, Ui.TEXT2);
         catHint.setGravity(Gravity.CENTER);
         catHint.setAlpha(0f);
@@ -385,6 +396,7 @@ public class BrowseActivity extends Activity implements TopBar.Reselect {
         catList.setOnItemClickListener(new AdapterView.OnItemClickListener() {
             public void onItemClick(AdapterView<?> p, View v, int pos, long id) {
                 Async.MAIN.removeCallbacks(pendingCat);
+                markPicked();
                 openCategory(catAdapter.getItem(pos), pos, true);
             }
         });
@@ -429,7 +441,7 @@ public class BrowseActivity extends Activity implements TopBar.Reselect {
                 // The list starts at the top (Search) whether you arrived by hovering the tab or
                 // pressing OK on it; the category shown underneath is still the usual one.
                 boolean fromTab = TopBar.tabFocused(BrowseActivity.this);
-                catAdapter.hideActive = fromTab;
+                catAdapter.hideActive = true; // nothing marked until you pick a category yourself
                 if (!fromTab) catList.requestFocus();
                 catList.setSelection(0);
                 Async.MAIN.postDelayed(new Runnable() { public void run() { if (!isFinishing()) tour(); } }, 600);
@@ -515,6 +527,12 @@ public class BrowseActivity extends Activity implements TopBar.Reselect {
                 : "Hold OK on a category to make it a favourite (it moves near the top with a ♥) or to hide it.";
     }
 
+    private void markPicked() {
+        if (pickedCategory) return;
+        pickedCategory = true;
+        catAdapter.hideActive = TopBar.tabFocused(this);
+    }
+
     /** OK on this section's own tab: to the top of the categories. */
     public void onTabReselected() { focusTopCategory(); }
 
@@ -584,8 +602,12 @@ public class BrowseActivity extends Activity implements TopBar.Reselect {
         int pos = catList.getSelectedItemPosition();
         if (pos < 0 || pos >= catAdapter.getCount()) return;
         Item c = catAdapter.getItem(pos);
-        if (currentCat != null && c.id.equals(currentCat.id)) return;
         if (SEARCH.equals(c.id)) return; // landing on Search does nothing until OK
+        markPicked(); // pausing on a category opens it, and from then on it's marked
+        if (currentCat != null && c.id.equals(currentCat.id)) {
+            catAdapter.notifyDataSetChanged();
+            return;
+        }
         openCategory(c, pos, false);
     }
 
