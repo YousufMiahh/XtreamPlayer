@@ -34,6 +34,9 @@ import java.util.Locale;
  */
 public class PlayerActivity extends Activity implements Engine.Listener {
     static final long BACK_MS = 5000, FORWARD_MS = 10000;
+    static final String VOD_HINT = "◀  5 sec      ▶  10 sec      OK  Play / Pause      ▼  Scrub      "
+            + (Ui.hasMenuKey() ? "☰" : "Hold OK") + "  Subtitles & Audio";
+    static final String SCRUB_HINT = "◀ ▶  Move (hold to go faster)      OK  Play from here      Back  Cancel";
     static final float[] SUB_SIZES = {0.045f, 0.056f, 0.068f, 0.085f};
     static final String[] SUB_COLOR_NAMES = {"White", "Yellow", "Cyan", "Green", "Pink", "Orange"};
     static final int[] SUB_COLORS = {0xFFFFFFFF, 0xFFFFE14D, 0xFF5AE0FF, 0xFF6BEA7A, 0xFFFF8AD8, 0xFFFFA94D};
@@ -55,6 +58,21 @@ public class PlayerActivity extends Activity implements Engine.Listener {
     private TextView vodTitle, vodSub, timeLeft, timeRight, seekBubble;
     private SeekBarView vodBar;
     private PlayPauseIcon centerIcon;
+
+    // Scrubbing (▼): a knob you move along the bar, with a picture preview above it
+    private FrameLayout scrubRow;
+    private LinearLayout scrubCard;
+    private ImageView scrubImage;
+    private TextView scrubTime, vodHint;
+    private boolean scrubbing;
+    private long scrubPos;
+    private FramePreview preview;
+    private int previewFor = -1;
+    private final Runnable scrubCommit = new Runnable() { public void run() { commitScrub(); } };
+
+    // Next episode card
+    private NextUpCard nextCard;
+    private boolean nextShown, nextDismissed;
 
     // Live banner
     private LinearLayout liveBanner;
@@ -91,6 +109,7 @@ public class PlayerActivity extends Activity implements Engine.Listener {
     private final Runnable ticker = new Runnable() {
         public void run() {
             updateProgress();
+            checkNextCard();
             Async.MAIN.postDelayed(this, 500);
         }
     };
@@ -183,8 +202,32 @@ public class PlayerActivity extends Activity implements Engine.Listener {
         blp.bottomMargin = Ui.dp(this, 12);
         vodOverlay.addView(seekBubble, blp);
 
+        // Scrub preview: picture + time, slid along above the knob
+        scrubRow = new FrameLayout(this);
+        scrubRow.setClipChildren(false);
+        scrubRow.setVisibility(View.GONE);
+        scrubCard = new LinearLayout(this);
+        scrubCard.setOrientation(LinearLayout.VERTICAL);
+        scrubCard.setGravity(Gravity.CENTER_HORIZONTAL);
+        scrubImage = new ImageView(this);
+        scrubImage.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        scrubImage.setBackground(Ui.rounded(this, 0xFF101014, 0x66FFFFFF, 10));
+        scrubImage.setClipToOutline(true);
+        int pw = Ui.dp(this, 320);
+        scrubCard.addView(scrubImage, new LinearLayout.LayoutParams(pw, pw * 9 / 16));
+        scrubTime = Ui.medium(this, "", 22, Ui.W1);
+        scrubTime.setTypeface(Ui.semibold());
+        scrubTime.setShadowLayer(Ui.dp(this, 6), 0, 0, 0xCC000000);
+        scrubTime.setPadding(0, Ui.dp(this, 10), 0, Ui.dp(this, 8));
+        scrubCard.addView(scrubTime);
+        scrubRow.addView(scrubCard, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        vodOverlay.addView(scrubRow, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
         vodBar = new SeekBarView(this);
-        vodOverlay.addView(vodBar, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(this, 7)));
+        vodBar.setBarHeight(Ui.dp(this, 7));
+        LinearLayout.LayoutParams vbl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(this, 28));
+        vbl.leftMargin = vbl.rightMargin = -Ui.dp(this, 14); // the knob's room at each end sits outside the margins
+        vodOverlay.addView(vodBar, vbl);
 
         LinearLayout times = new LinearLayout(this);
         times.setPadding(0, Ui.dp(this, 12), 0, 0);
@@ -195,11 +238,20 @@ public class PlayerActivity extends Activity implements Engine.Listener {
         times.addView(timeRight, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
         vodOverlay.addView(times);
 
-        TextView hint = Ui.text(this, "◀  5 sec      ▶  10 sec      OK  Play / Pause      ▼  Subtitles & Audio", 14, Ui.W3);
-        hint.setGravity(Gravity.CENTER);
-        hint.setPadding(0, Ui.dp(this, 18), 0, 0);
-        vodOverlay.addView(hint, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        vodHint = Ui.text(this, VOD_HINT, 14, Ui.W3);
+        vodHint.setGravity(Gravity.CENTER);
+        vodHint.setPadding(0, Ui.dp(this, 18), 0, 0);
+        vodOverlay.addView(vodHint, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         root.addView(vodOverlay, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM));
+
+        nextCard = new NextUpCard(this);
+        nextCard.setVisibility(View.GONE);
+        FrameLayout.LayoutParams nl = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM | Gravity.END);
+        nl.rightMargin = Ui.dp(this, 72);
+        nl.bottomMargin = Ui.dp(this, 64);
+        root.addView(nextCard, nl);
+        nextCard.credits.setOnClickListener(new View.OnClickListener() { public void onClick(View v) { watchCredits(); } });
+        nextCard.next.setOnClickListener(new View.OnClickListener() { public void onClick(View v) { playNextEpisode(); } });
 
         centerIcon = new PlayPauseIcon(this);
         centerIcon.setBackground(Ui.rounded(this, 0x80000000, 0, 60));
@@ -337,7 +389,7 @@ public class PlayerActivity extends Activity implements Engine.Listener {
         if (isLive()) Coach.show(this, "player_live", true, new Coach.Step(null, "Watching Live TV",
                 "▲ ▼  Change channel\nOK  Channel list\n◀ ▶  Channel info\n" + menu + "  Favourite, subtitles & audio\nBack  Leave"));
         else Coach.show(this, "player_vod", true, new Coach.Step(null, "Watching films & series",
-                "OK  Pause / play\n◀  Back 5 seconds     ▶  Forward 10 seconds (press again to go further)\n▼ or ☰  Subtitles, audio & favourite\nBack  Leave — your place is saved"));
+                "OK  Pause / play\n◀  Back 5 seconds     ▶  Forward 10 seconds (press again to go further)\n▼  Scrub: move the knob with ◀ ▶, OK to jump there\n" + menu + "  Subtitles, audio & favourite\nBack  Leave — your place is saved"));
         Async.MAIN.post(ticker);
         Async.MAIN.postDelayed(watchdog, 1000);
     }
@@ -347,6 +399,9 @@ public class PlayerActivity extends Activity implements Engine.Listener {
         Async.MAIN.removeCallbacks(ticker);
         Async.MAIN.removeCallbacks(watchdog);
         Async.MAIN.removeCallbacks(zapPlay);
+        if (scrubbing) cancelScrub();
+        releasePreview();
+        hideNextCard();
         savePosition();
         releaseEngine();
         super.onStop();
@@ -354,7 +409,7 @@ public class PlayerActivity extends Activity implements Engine.Listener {
 
     @Override
     protected void onDestroy() {
-        Runnable[] all = {hideOverlay, hideBanner, endBurst, hideStatus, zapPlay, ticker, watchdog};
+        Runnable[] all = {hideOverlay, hideBanner, endBurst, hideStatus, zapPlay, ticker, watchdog, scrubCommit};
         for (Runnable r : all) Async.MAIN.removeCallbacks(r);
         super.onDestroy();
     }
@@ -499,6 +554,10 @@ public class PlayerActivity extends Activity implements Engine.Listener {
 
     private void play(boolean resume) {
         if (videoHost == null) return;
+        if (scrubbing) cancelScrub();
+        hideNextCard();
+        nextDismissed = false;
+        if (previewFor != index) releasePreview();
         Item it = current();
         boolean vlc = wantsVlc(it);
         if (engine == null || vlc != usingVlc) startEngine(vlc);
@@ -908,6 +967,41 @@ public class PlayerActivity extends Activity implements Engine.Listener {
         if (Coach.showing(this)) return super.dispatchKeyEvent(e); // the tutorial card has the keys
         int k = e.getKeyCode();
         boolean okKey = k == KeyEvent.KEYCODE_DPAD_CENTER || k == KeyEvent.KEYCODE_ENTER;
+
+        // Next episode card: ◀ ▶ between its two buttons, OK presses, Back = watch credits
+        if (nextShown && engine != null && !panelOpen() && !scrubbing) {
+            if (k == KeyEvent.KEYCODE_DPAD_LEFT || k == KeyEvent.KEYCODE_DPAD_RIGHT) {
+                if (e.getAction() == KeyEvent.ACTION_DOWN) (k == KeyEvent.KEYCODE_DPAD_LEFT ? nextCard.credits : nextCard.next).requestFocus();
+                return true;
+            }
+            if (okKey) {
+                if (e.getAction() == KeyEvent.ACTION_UP) {
+                    if (nextCard.credits.isFocused()) watchCredits(); else playNextEpisode();
+                }
+                return true;
+            }
+        }
+
+        // Films & series: OK pauses when released; held, it opens the menu (remotes without ☰)
+        if (engine != null && okKey && !isLive() && !panelOpen() && errorText.getVisibility() != View.VISIBLE) {
+            if (e.getAction() == KeyEvent.ACTION_DOWN) {
+                if (e.getRepeatCount() == 0) {
+                    okDown = true;
+                    okHeld = false;
+                } else if (okDown && !okHeld && !scrubbing && e.getEventTime() - e.getDownTime() >= 450) {
+                    okHeld = true;
+                    openTracks();
+                }
+                return true;
+            }
+            if (e.getAction() == KeyEvent.ACTION_UP) {
+                if (okDown && !okHeld) {
+                    if (scrubbing) commitScrub(); else togglePause();
+                }
+                okDown = okHeld = false;
+                return true;
+            }
+        }
         if (engine != null && okKey && isLive() && !panelOpen() && errorText.getVisibility() != View.VISIBLE) {
             if (e.getAction() == KeyEvent.ACTION_DOWN) {
                 if (e.getRepeatCount() == 0) {
@@ -980,9 +1074,34 @@ public class PlayerActivity extends Activity implements Engine.Listener {
             }
         }
 
+        if (scrubbing) {
+            switch (k) {
+                case KeyEvent.KEYCODE_DPAD_LEFT:
+                case KeyEvent.KEYCODE_MEDIA_REWIND:
+                    moveScrub(-1, e.getRepeatCount());
+                    return true;
+                case KeyEvent.KEYCODE_DPAD_RIGHT:
+                case KeyEvent.KEYCODE_MEDIA_FAST_FORWARD:
+                    moveScrub(1, e.getRepeatCount());
+                    return true;
+                case KeyEvent.KEYCODE_DPAD_UP:
+                    cancelScrub();
+                    return true;
+                case KeyEvent.KEYCODE_DPAD_DOWN:
+                    return true;
+                case KeyEvent.KEYCODE_MENU:
+                    cancelScrub();
+                    openTracks();
+                    return true;
+                case KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE:
+                    commitScrub();
+                    return true;
+                default:
+                    return super.dispatchKeyEvent(e);
+            }
+        }
+
         switch (k) {
-            case KeyEvent.KEYCODE_DPAD_CENTER:
-            case KeyEvent.KEYCODE_ENTER:
             case KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE:
                 if (e.getRepeatCount() > 0) return true;
                 togglePause();
@@ -1006,12 +1125,171 @@ public class PlayerActivity extends Activity implements Engine.Listener {
                 showOverlay(true);
                 return true;
             case KeyEvent.KEYCODE_DPAD_DOWN:
+                if (e.getRepeatCount() == 0) enterScrub();
+                return true;
             case KeyEvent.KEYCODE_MENU:
                 openTracks();
                 return true;
             default:
                 return super.dispatchKeyEvent(e);
         }
+    }
+
+    // ------------------------------------------------------------ scrubbing
+
+    /** ▼ while a film or episode plays: the knob appears where you are. */
+    private void enterScrub() {
+        long d = engine.duration();
+        if (d <= 0) { // no length known (some streams): nothing to scrub along
+            showOverlay(true);
+            return;
+        }
+        Async.MAIN.removeCallbacks(endBurst);
+        endBurst.run();
+        scrubbing = true;
+        scrubPos = engine.position();
+        scrubRow.setVisibility(View.VISIBLE);
+        vodHint.setText(SCRUB_HINT);
+        showOverlay(false); // stays up while scrubbing
+        if (prefs.scrubPreviews()) {
+            if (preview == null || previewFor != index) {
+                releasePreview();
+                preview = new FramePreview(api.playUrl(current(), liveFormat), api.ua, Ui.dp(this, 320));
+                previewFor = index;
+            }
+            preview.setListener(new FramePreview.Listener() {
+                public void onFrame(long ms, android.graphics.Bitmap b) {
+                    if (!scrubbing) return;
+                    if (b != null) scrubImage.setImageBitmap(b);
+                    else if (preview != null && preview.failed()) scrubImage.setVisibility(View.GONE);
+                }
+            });
+            scrubImage.setVisibility(preview.failed() ? View.GONE : View.VISIBLE);
+            scrubImage.setImageDrawable(null);
+        } else {
+            scrubImage.setVisibility(View.GONE);
+        }
+        updateScrub();
+    }
+
+    /**
+     * ◀ ▶ while scrubbing. Steps grow while the button is held (like YouTube), from a few
+     * seconds per press to minutes, so a whole film can be crossed in a couple of seconds.
+     */
+    private void moveScrub(int dir, int repeat) {
+        long d = engine.duration();
+        if (d <= 0) return;
+        long base = Math.max(10_000L, d / 120);           // ~1% of the film per press, at least 10 s
+        float speed = repeat < 3 ? 1f : repeat < 8 ? 2f : repeat < 16 ? 4f : 8f;
+        scrubPos = Math.max(0, Math.min(d - 1000, scrubPos + dir * (long) (base * speed)));
+        updateScrub();
+    }
+
+    private void updateScrub() {
+        long d = engine.duration();
+        if (d <= 0) return;
+        vodBar.setKnob(scrubPos / (float) d);
+        long delta = scrubPos - engine.position();
+        scrubTime.setText(SeriesActivity.fmt(scrubPos)
+                + (Math.abs(delta) >= 1000 ? "   " + (delta < 0 ? "−" : "+") + SeriesActivity.fmt(Math.abs(delta)) : ""));
+        placeScrubCard();
+        if (preview != null && prefs.scrubPreviews()) preview.request(scrubPos);
+        // Like YouTube: once you stop moving, it plays from the new point after a short pause
+        Async.MAIN.removeCallbacks(scrubCommit);
+        Async.MAIN.postDelayed(scrubCommit, 1000);
+    }
+
+    /** Keep the preview centred over the knob, without running off either edge. */
+    private void placeScrubCard() {
+        if (scrubCard.getWidth() == 0) {
+            scrubCard.post(new Runnable() { public void run() { if (scrubbing) placeScrubCard(); } });
+            return;
+        }
+        float barLeft = vodBar.getLeft() - scrubRow.getLeft();
+        float x = barLeft + vodBar.knobX() - scrubCard.getWidth() / 2f;
+        x = Math.max(0, Math.min(scrubRow.getWidth() - scrubCard.getWidth(), x));
+        scrubCard.setTranslationX(x);
+    }
+
+    /** OK, or a moment after you stop moving: play from the knob. */
+    private void commitScrub() {
+        if (!scrubbing) return;
+        long target = scrubPos;
+        exitScrub();
+        if (Math.abs(target - engine.position()) >= 1000) engine.seekTo(target);
+        if (!engine.isPlaying()) engine.play();
+        showOverlay(true);
+    }
+
+    /** Back / ▲: leave the knob where the film actually is. */
+    private void cancelScrub() {
+        if (!scrubbing) return;
+        exitScrub();
+        showOverlay(true);
+    }
+
+    private void exitScrub() {
+        scrubbing = false;
+        Async.MAIN.removeCallbacks(scrubCommit);
+        scrubRow.setVisibility(View.GONE);
+        vodBar.setKnob(-1);
+        vodHint.setText(VOD_HINT);
+        if (preview != null) preview.setListener(null);
+    }
+
+    private void releasePreview() {
+        if (preview != null) preview.release();
+        preview = null;
+        previewFor = -1;
+    }
+
+    // ------------------------------------------------------------ next episode
+
+    /** Shows the Next Episode card in the last 30 seconds of an episode that has a next one. */
+    private void checkNextCard() {
+        if (engine == null || isLive() || !Item.EPISODE.equals(current().type) || index >= queue.size() - 1) return;
+        long d = engine.duration(), p = engine.position();
+        if (d < 5 * 60_000L) return;
+        long left = d - p;
+        if (left > 45_000) nextDismissed = false; // went back: offer it again later
+        if (nextShown) {
+            if (left > 35_000) hideNextCard();
+            else nextCard.setPaused(!engine.isPlaying());
+            return;
+        }
+        if (left <= 30_000 && left > 2_000 && !nextDismissed && !scrubbing && engine.isPlaying()) {
+            nextShown = true;
+            fade(vodOverlay, false);
+            nextCard.setAlpha(0f);
+            nextCard.setVisibility(View.VISIBLE);
+            nextCard.animate().alpha(1f).setDuration(250).start();
+            nextCard.next.requestFocus();
+            nextCard.start(new Runnable() { public void run() { playNextEpisode(); } });
+        }
+    }
+
+    private void hideNextCard() {
+        if (nextCard == null) return;
+        nextCard.stopTimer();
+        if (nextShown) {
+            nextShown = false;
+            nextCard.setVisibility(View.GONE);
+            videoHost.requestFocus();
+        }
+    }
+
+    private void watchCredits() {
+        nextDismissed = true;
+        hideNextCard();
+    }
+
+    private void playNextEpisode() {
+        hideNextCard();
+        if (index >= queue.size() - 1) return;
+        prefs.setPosition(current(), 0);
+        index++;
+        retries = 0;
+        play(false);
     }
 
     private void togglePause() {
@@ -1051,6 +1329,14 @@ public class PlayerActivity extends Activity implements Engine.Listener {
     @Override
     public void onBackPressed() {
         if (Coach.back(this)) return;
+        if (scrubbing) {
+            cancelScrub();
+            return;
+        }
+        if (nextShown) {
+            watchCredits();
+            return;
+        }
         if (videoHost != null && panelOpen()) {
             hidePanels();
             return;

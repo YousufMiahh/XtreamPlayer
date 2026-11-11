@@ -174,6 +174,10 @@ public class Prefs {
     // ================================================================ settings (all accounts)
 
     /** "ts" or "m3u8". */
+    /** Picture previews while scrubbing films and series (uses a second connection while you scrub). */
+    public boolean scrubPreviews() { return sp.getBoolean("scrub_previews", true); }
+    public void setScrubPreviews(boolean on) { sp.edit().putBoolean("scrub_previews", on).apply(); }
+
     public String liveFormat() { return sp.getString("live_format", "ts"); }
     public void setLiveFormat(String f) { sp.edit().putString("live_format", f).apply(); }
 
