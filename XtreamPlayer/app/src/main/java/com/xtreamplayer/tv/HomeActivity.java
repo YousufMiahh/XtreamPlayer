@@ -78,6 +78,11 @@ public class HomeActivity extends Activity {
                 Coach.offer(HomeActivity.this, true, new Runnable() { public void run() { homeTour(); } });
             }
         }, 1500);
+        Async.MAIN.postDelayed(new Runnable() { // new version on GitHub? (not over the tutorial)
+            public void run() {
+                if (!isFinishing() && !Coach.showing(HomeActivity.this)) Updater.check(HomeActivity.this, false);
+            }
+        }, 3000);
     }
 
     private View topBar;
