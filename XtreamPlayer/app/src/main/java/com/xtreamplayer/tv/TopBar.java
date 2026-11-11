@@ -138,18 +138,61 @@ public final class TopBar {
 
         // Coming up from the page always lands on the current tab (like tvOS), and the
         // highlight fades away when you move down into the page.
+        // Safety net: the highlight always matches where focus actually is. Focus can land on a
+        // tab without the usual focus callback (e.g. when the screen comes back or is still
+        // being laid out while you move quickly along the bar), which left a tab with dark text
+        // but no highlight behind it.
+        final Runnable sync = new Runnable() {
+            public void run() {
+                View f = tabs.getRootView().findFocus();
+                boolean onTab = f != null && f.getParent() == tabs;
+                if (onTab) {
+                    if (!glide.shown || glide.pill.getAlpha() < 0.99f || Math.abs(glide.x - (tabs.getLeft() + f.getLeft())) > 1) {
+                        glideTo(glide, tabs, f);
+                    }
+                } else if (glide.shown) {
+                    glide.shown = false;
+                    glide.pill.animate().cancel();
+                    glide.pill.animate().alpha(0f).scaleX(0.92f).scaleY(0.92f).setDuration(160).start();
+                }
+            }
+        };
         final ViewTreeObserver.OnGlobalFocusChangeListener entry = new ViewTreeObserver.OnGlobalFocusChangeListener() {
             public void onGlobalFocusChanged(View oldFocus, View newFocus) {
                 boolean toTab = newFocus != null && newFocus.getParent() == tabs;
                 if (!toTab && glide.shown) {
                     glide.shown = false;
+                    glide.pill.animate().cancel();
                     glide.pill.animate().alpha(0f).scaleX(0.92f).scaleY(0.92f).setDuration(160).start();
+                }
+                tabs.removeCallbacks(sync);
+                tabs.postDelayed(sync, 320); // after the glide has had time to finish
+            }
+        };
+        final ViewTreeObserver.OnWindowFocusChangeListener windowFocus = new ViewTreeObserver.OnWindowFocusChangeListener() {
+            public void onWindowFocusChanged(boolean has) {
+                if (has) {
+                    tabs.removeCallbacks(sync);
+                    tabs.postDelayed(sync, 60);
                 }
             }
         };
+        tabs.addOnLayoutChangeListener(new View.OnLayoutChangeListener() {
+            public void onLayoutChange(View v, int l, int t, int r, int b, int ol, int ot, int or, int ob) {
+                v.removeCallbacks(sync);
+                v.postDelayed(sync, 60);
+            }
+        });
         tabs.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
-            public void onViewAttachedToWindow(View v) { v.getViewTreeObserver().addOnGlobalFocusChangeListener(entry); }
-            public void onViewDetachedFromWindow(View v) { v.getViewTreeObserver().removeOnGlobalFocusChangeListener(entry); }
+            public void onViewAttachedToWindow(View v) {
+                v.getViewTreeObserver().addOnGlobalFocusChangeListener(entry);
+                v.getViewTreeObserver().addOnWindowFocusChangeListener(windowFocus);
+            }
+            public void onViewDetachedFromWindow(View v) {
+                v.removeCallbacks(sync);
+                v.getViewTreeObserver().removeOnGlobalFocusChangeListener(entry);
+                v.getViewTreeObserver().removeOnWindowFocusChangeListener(windowFocus);
+            }
         });
 
         final TextView clock = Ui.medium(a, "", 20, Ui.TEXT2);
@@ -220,7 +263,7 @@ public final class TopBar {
             fromW = tw;
         }
         g.pill.animate().cancel();
-        if (!g.shown) {
+        if (!g.shown || g.pill.getAlpha() < 0.99f) {
             g.pill.setScaleX(fromX == tx ? 0.92f : 1f);
             g.pill.setScaleY(fromX == tx ? 0.92f : 1f);
             g.pill.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(180).setInterpolator(EASE).start();
