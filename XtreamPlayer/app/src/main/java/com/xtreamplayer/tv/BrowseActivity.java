@@ -55,7 +55,7 @@ public class BrowseActivity extends Activity implements TopBar.Reselect {
     private boolean live;
 
     private ListView catList;
-    private TextView catHint;
+    private TextView catHint, infoNowLabel;
     /** Whether you've opened a category yourself (until then the one shown isn't marked in the list). */
     private boolean pickedCategory;
     private AbsListView content;
@@ -288,6 +288,7 @@ public class BrowseActivity extends Activity implements TopBar.Reselect {
         p.addView(infoName);
 
         TextView nowL = Ui.medium(this, "NOW", 13, Ui.TEXT3);
+        infoNowLabel = nowL;
         nowL.setLetterSpacing(0.12f);
         p.addView(nowL);
         infoNowTitle = Ui.lines(Ui.medium(this, "", 20, Ui.TEXT), 2);
@@ -784,16 +785,20 @@ public class BrowseActivity extends Activity implements TopBar.Reselect {
                 if (cur < 0) cur = 0;
                 if (cur >= contentAdapter.getCount() || contentAdapter.getItem(cur) != it) return;
                 if (r == null || r.isEmpty()) {
+                    if (infoNowLabel != null) infoNowLabel.setText("NOW");
                     infoNowTitle.setText("No guide information");
                     infoNowTitle.setTextColor(Ui.TEXT2);
                     return;
                 }
                 XtreamApi.Programme now = r.get(0);
+                // The provider's first listing can start later (a gap in its guide): don't call it "Now"
+                boolean later = now.start > System.currentTimeMillis() / 1000L + 60;
+                if (infoNowLabel != null) infoNowLabel.setText(later ? "NEXT LISTED" : "NOW");
                 infoNowTitle.setTextColor(Ui.TEXT);
                 infoNowTitle.setText(now.title);
-                infoNowTime.setText(now.timeRange());
+                infoNowTime.setText(later ? "Starts " + now.timeRange() + "  ·  nothing listed before then" : now.timeRange());
                 infoProgress.removeAllViews();
-                if (now.start > 0) infoProgress.addView(Cards.progressBar(BrowseActivity.this, now.progress()),
+                if (now.start > 0 && !later) infoProgress.addView(Cards.progressBar(BrowseActivity.this, now.progress()),
                         new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
                 infoDesc.setText(now.desc == null ? "" : now.desc);
                 if (r.size() > 1) {

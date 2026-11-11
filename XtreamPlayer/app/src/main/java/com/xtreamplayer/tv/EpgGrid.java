@@ -115,7 +115,7 @@ public class EpgGrid extends View {
                 return true;
             case KeyEvent.KEYCODE_DPAD_RIGHT: {
                 XtreamApi.Programme p = current();
-                long next = p != null && p.stop > cursor ? p.stop : cursor + HALF_HOUR;
+                long next = p != null && p.stop > cursor ? p.stop : nextListedStart(cursor);
                 long limit = now() + 24 * 3600;
                 if (next > limit) return true;
                 cursor = next + 1;
@@ -225,6 +225,15 @@ public class EpgGrid extends View {
         if (l == null) return null;
         for (XtreamApi.Programme p : l) if (p.start <= cursor && cursor < p.stop) return p;
         return null;
+    }
+
+    /** In a gap with nothing listed: jump straight to the next programme (not half an hour of nothing at a time). */
+    private long nextListedStart(long from) {
+        if (sel >= 0 && sel < channels.size()) {
+            List<XtreamApi.Programme> l = Guide.get(channels.get(sel).id);
+            if (l != null) for (XtreamApi.Programme p : l) if (p.start > from) return p.start;
+        }
+        return from + HALF_HOUR;
     }
 
     private void highlight() {
