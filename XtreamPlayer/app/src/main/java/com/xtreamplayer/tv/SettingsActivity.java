@@ -177,14 +177,6 @@ public class SettingsActivity extends Activity {
                 Toast.makeText(SettingsActivity.this, "Everything will use the default player again", Toast.LENGTH_SHORT).show();
             }
         });
-        row("Scrub Previews", prefs.scrubPreviews() ? "On" : "Off  ·  saves a connection", new Action() {
-            public void run(TextView v) {
-                prefs.setScrubPreviews(!prefs.scrubPreviews());
-                v.setText(prefs.scrubPreviews() ? "On" : "Off  ·  saves a connection");
-                if (prefs.scrubPreviews()) Toast.makeText(SettingsActivity.this,
-                        "Previews use a second connection while you scrub. Turn off for one-connection accounts.", Toast.LENGTH_LONG).show();
-            }
-        });
         row("Live Stream Format", liveLabel(), new Action() {
             public void run(TextView v) {
                 prefs.setLiveFormat("ts".equals(prefs.liveFormat()) ? "m3u8" : "ts");

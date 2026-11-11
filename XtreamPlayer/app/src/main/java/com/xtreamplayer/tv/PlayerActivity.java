@@ -59,15 +59,12 @@ public class PlayerActivity extends Activity implements Engine.Listener {
     private SeekBarView vodBar;
     private PlayPauseIcon centerIcon;
 
-    // Scrubbing (▼): a knob you move along the bar, with a picture preview above it
+    // Scrubbing (▼): a knob you move along the bar, with the time above it
     private FrameLayout scrubRow;
     private LinearLayout scrubCard;
-    private ImageView scrubImage;
     private TextView scrubTime, vodHint;
     private boolean scrubbing;
     private long scrubPos;
-    private FramePreview preview;
-    private int previewFor = -1;
     private final Runnable scrubCommit = new Runnable() { public void run() { commitScrub(); } };
 
     // Next episode card
@@ -202,19 +199,13 @@ public class PlayerActivity extends Activity implements Engine.Listener {
         blp.bottomMargin = Ui.dp(this, 12);
         vodOverlay.addView(seekBubble, blp);
 
-        // Scrub preview: picture + time, slid along above the knob
+        // Scrub time, slid along above the knob
         scrubRow = new FrameLayout(this);
         scrubRow.setClipChildren(false);
         scrubRow.setVisibility(View.GONE);
         scrubCard = new LinearLayout(this);
         scrubCard.setOrientation(LinearLayout.VERTICAL);
         scrubCard.setGravity(Gravity.CENTER_HORIZONTAL);
-        scrubImage = new ImageView(this);
-        scrubImage.setScaleType(ImageView.ScaleType.CENTER_CROP);
-        scrubImage.setBackground(Ui.rounded(this, 0xFF101014, 0x66FFFFFF, 10));
-        scrubImage.setClipToOutline(true);
-        int pw = Ui.dp(this, 320);
-        scrubCard.addView(scrubImage, new LinearLayout.LayoutParams(pw, pw * 9 / 16));
         scrubTime = Ui.medium(this, "", 22, Ui.W1);
         scrubTime.setTypeface(Ui.semibold());
         scrubTime.setShadowLayer(Ui.dp(this, 6), 0, 0, 0xCC000000);
@@ -400,7 +391,6 @@ public class PlayerActivity extends Activity implements Engine.Listener {
         Async.MAIN.removeCallbacks(watchdog);
         Async.MAIN.removeCallbacks(zapPlay);
         if (scrubbing) cancelScrub();
-        releasePreview();
         hideNextCard();
         savePosition();
         releaseEngine();
@@ -557,7 +547,6 @@ public class PlayerActivity extends Activity implements Engine.Listener {
         if (scrubbing) cancelScrub();
         hideNextCard();
         nextDismissed = false;
-        if (previewFor != index) releasePreview();
         Item it = current();
         boolean vlc = wantsVlc(it);
         if (engine == null || vlc != usingVlc) startEngine(vlc);
@@ -1151,24 +1140,6 @@ public class PlayerActivity extends Activity implements Engine.Listener {
         scrubRow.setVisibility(View.VISIBLE);
         vodHint.setText(SCRUB_HINT);
         showOverlay(false); // stays up while scrubbing
-        if (prefs.scrubPreviews()) {
-            if (preview == null || previewFor != index) {
-                releasePreview();
-                preview = new FramePreview(api.playUrl(current(), liveFormat), api.ua, Ui.dp(this, 320));
-                previewFor = index;
-            }
-            preview.setListener(new FramePreview.Listener() {
-                public void onFrame(long ms, android.graphics.Bitmap b) {
-                    if (!scrubbing) return;
-                    if (b != null) scrubImage.setImageBitmap(b);
-                    else if (preview != null && preview.failed()) scrubImage.setVisibility(View.GONE);
-                }
-            });
-            scrubImage.setVisibility(preview.failed() ? View.GONE : View.VISIBLE);
-            scrubImage.setImageDrawable(null);
-        } else {
-            scrubImage.setVisibility(View.GONE);
-        }
         updateScrub();
     }
 
@@ -1193,13 +1164,12 @@ public class PlayerActivity extends Activity implements Engine.Listener {
         scrubTime.setText(SeriesActivity.fmt(scrubPos)
                 + (Math.abs(delta) >= 1000 ? "   " + (delta < 0 ? "−" : "+") + SeriesActivity.fmt(Math.abs(delta)) : ""));
         placeScrubCard();
-        if (preview != null && prefs.scrubPreviews()) preview.request(scrubPos);
         // Like YouTube: once you stop moving, it plays from the new point after a short pause
         Async.MAIN.removeCallbacks(scrubCommit);
         Async.MAIN.postDelayed(scrubCommit, 1000);
     }
 
-    /** Keep the preview centred over the knob, without running off either edge. */
+    /** Keep the time centred over the knob, without running off either edge. */
     private void placeScrubCard() {
         if (scrubCard.getWidth() == 0) {
             scrubCard.post(new Runnable() { public void run() { if (scrubbing) placeScrubCard(); } });
@@ -1234,13 +1204,6 @@ public class PlayerActivity extends Activity implements Engine.Listener {
         scrubRow.setVisibility(View.GONE);
         vodBar.setKnob(-1);
         vodHint.setText(VOD_HINT);
-        if (preview != null) preview.setListener(null);
-    }
-
-    private void releasePreview() {
-        if (preview != null) preview.release();
-        preview = null;
-        previewFor = -1;
     }
 
     // ------------------------------------------------------------ next episode
