@@ -1,3 +1,4 @@
+- Continue Watching: when you finish an episode, the next one takes its place, ready to start. Episodes started from Continue Watching or the Queue now also play on into the next one.
 - Categories: press ☰ on a category for Favourite, Rename and Hide (it used to hide it straight away).
 - Coming back to a film near its end now carries on where you were instead of starting again.
 - If a stream drops part-way through, it reconnects and carries on, instead of marking it watched and moving on.

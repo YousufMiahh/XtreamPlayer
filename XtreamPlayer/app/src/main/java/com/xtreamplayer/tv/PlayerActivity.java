@@ -490,7 +490,7 @@ public class PlayerActivity extends Activity implements Engine.Listener {
         }
         if (upNext() != null) playNext(); // next episode, or the next thing in your Queue
         else {
-            prefs.setWatched(current(), true);
+            finishedCurrent();
             finish();
         }
     }
@@ -589,6 +589,7 @@ public class PlayerActivity extends Activity implements Engine.Listener {
         load(start);
         prefs.addHistory(it);
         loadSegments();
+        extendSeries();
         if (isLive()) {
             fade(vodOverlay, false);
             showBanner();
@@ -623,7 +624,7 @@ public class PlayerActivity extends Activity implements Engine.Listener {
         if (engine == null || queue == null || isLive()) return;
         long d = engine.duration(), p = engine.position();
         if (d > 0) prefs.setDuration(current(), d);
-        if (d > 0 && (p > d - 60000 || p >= d * 0.9)) prefs.setWatched(current(), true); // finished (or into the credits)
+        if (d > 0 && (p > d - 60000 || p >= d * 0.9)) finishedCurrent(); // finished (or into the credits)
         else if (p > 10000) prefs.setPosition(current(), p);
     }
 
@@ -1241,6 +1242,43 @@ public class PlayerActivity extends Activity implements Engine.Listener {
 
     /** Shows the Next Episode card in the last 30 seconds of an episode that has a next one. */
     /** What plays after this: the next episode, or else the next thing in your Queue. */
+    /**
+     * This film / episode is done: marked watched, and the next episode (if there is one) goes
+     * into Continue Watching, ready at the start, the way Netflix does it.
+     */
+    private void finishedCurrent() {
+        Item cur = current();
+        prefs.setWatched(cur, true);
+        if (!Item.EPISODE.equals(cur.type) || cur.parentId == null || index >= queue.size() - 1) return;
+        Item nx = queue.get(index + 1);
+        if (Item.EPISODE.equals(nx.type) && cur.parentId.equals(nx.parentId) && !prefs.isWatched(nx) && prefs.position(nx) == 0) {
+            prefs.markUpNext(nx);
+        }
+    }
+
+    /**
+     * An episode played on its own (from Continue Watching or the Queue), or the last of a season:
+     * fetch the series so the next episode follows on, and can go into Continue Watching.
+     */
+    private void extendSeries() {
+        final Item cur = current();
+        if (!Item.EPISODE.equals(cur.type) || cur.parentId == null || index < queue.size() - 1) return;
+        Async.run(new Async.Work<List<Item>>() {
+            public List<Item> run() throws Exception { return Episodes.following(api, cur); }
+        }, new Async.Done<List<Item>>() {
+            public void done(List<Item> all, Exception e) {
+                if (all == null || isFinishing() || queue == null || current() != cur) return;
+                int at = -1;
+                for (int i = 0; i < all.size(); i++) if (all.get(i).id.equals(cur.id)) { at = i; break; }
+                if (at < 0 || at >= all.size() - 1) return;
+                List<Item> q = new java.util.ArrayList<>(all);
+                q.set(at, cur);
+                queue = q;
+                index = at;
+            }
+        });
+    }
+
     private Item upNext() {
         Item cur = current();
         if (Item.EPISODE.equals(cur.type) && index < queue.size() - 1) return queue.get(index + 1);
@@ -1301,7 +1339,9 @@ public class PlayerActivity extends Activity implements Engine.Listener {
         Item nx = upNext();
         hideNextCard();
         if (nx == null) return;
-        prefs.setWatched(current(), true);
+        long d = engine == null ? 0 : engine.duration(), p = engine == null ? 0 : engine.position();
+        if (d <= 0 || p >= d * 0.9 || p > d - 60_000 || p >= cardAt(d) - 2000) finishedCurrent(); // at the end
+        else savePosition(); // skipped ahead early: not watched, keep your place
         if (Item.EPISODE.equals(current().type) && index < queue.size() - 1 && queue.get(index + 1) == nx) {
             index++;
         } else {

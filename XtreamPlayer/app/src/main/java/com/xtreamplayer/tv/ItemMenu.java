@@ -46,7 +46,7 @@ final class ItemMenu {
             labels.add(all ? "○  Mark Season as Unwatched" : "✓  Mark Season as Watched");
             actions.add(new Runnable() { public void run() { prefs.setWatched(season, !all); } });
         }
-        if (!series && prefs.position(it) > 0) {
+        if (!series && (prefs.position(it) > 0 || prefs.isUpNext(it))) {
             labels.add("✕  Remove from Continue Watching");
             actions.add(new Runnable() { public void run() { prefs.setPosition(it, 0); } });
         }

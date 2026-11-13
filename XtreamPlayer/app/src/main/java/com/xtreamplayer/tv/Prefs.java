@@ -138,7 +138,7 @@ public class Prefs {
 
     private static boolean isAccountData(String k) {
         return k.startsWith("fav_") || k.startsWith("pos_") || k.startsWith("dur_") || k.startsWith("hist_") || k.startsWith("lib_time")
-                || k.equals("watched") || k.equals("queue") || k.startsWith("catname_");
+                || k.equals("watched") || k.equals("queue") || k.equals("upnext") || k.startsWith("catname_");
     }
 
     /** Key prefix for the current account's data ("" for the original account, so old data keeps working). */
@@ -376,7 +376,27 @@ public class Prefs {
 
     public long position(Item it) { return sp.getLong(ns() + "pos_" + it.key(), 0); }
 
+    // ================================================================ up next (Continue Watching)
+
+    /** The next episode after one you finished: shown in Continue Watching at the start. */
+    public void markUpNext(Item it) {
+        addHistory(it);
+        Set<String> s = new HashSet<>(set("upnext"));
+        if (s.add(it.key())) sp.edit().putStringSet(ns() + "upnext", s).apply();
+    }
+
+    public boolean isUpNext(Item it) { return it != null && set("upnext").contains(it.key()); }
+
+    private void clearUpNext(Item it) {
+        Set<String> s = set("upnext");
+        if (!s.contains(it.key())) return;
+        s = new HashSet<>(s);
+        s.remove(it.key());
+        sp.edit().putStringSet(ns() + "upnext", s).apply();
+    }
+
     public void setPosition(Item it, long ms) {
+        clearUpNext(it); // started (or removed): an ordinary entry from now on
         if (ms <= 0) sp.edit().remove(ns() + "pos_" + it.key()).apply();
         else sp.edit().putLong(ns() + "pos_" + it.key(), ms).apply();
     }
@@ -506,7 +526,8 @@ public class Prefs {
     /** Movies and episodes started but not finished. */
     public List<Item> continueWatching() {
         List<Item> out = new ArrayList<>();
-        for (Item it : history(false)) if (position(it) > 0) out.add(it);
+        Set<String> up = set("upnext");
+        for (Item it : history(false)) if (position(it) > 0 || up.contains(it.key())) out.add(it);
         return out;
     }
 
@@ -535,7 +556,7 @@ public class Prefs {
             String rest = ns.isEmpty() ? k : (k.startsWith(ns) ? k.substring(ns.length()) : null);
             if (rest == null) continue;
             if (ns.isEmpty() && rest.matches("^a\\d+_.*")) continue; // another account's data
-            if (rest.startsWith("pos_") || rest.startsWith("dur_") || rest.startsWith("hist_")) e.remove(k);
+            if (rest.startsWith("pos_") || rest.startsWith("dur_") || rest.startsWith("hist_") || rest.equals("upnext")) e.remove(k);
         }
         e.apply();
     }
