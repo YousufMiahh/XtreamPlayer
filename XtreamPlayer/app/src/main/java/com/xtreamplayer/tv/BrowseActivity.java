@@ -146,7 +146,7 @@ public class BrowseActivity extends Activity implements TopBar.Reselect {
             }
         });
         catCol.addView(catWrap, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
-        catHint = Ui.text(this, Ui.hasMenuKey() ? "Hold OK  ♥ Favourite      ☰  Hide" : "Hold OK  Favourite or hide", 14, Ui.TEXT2);
+        catHint = Ui.text(this, Ui.hasMenuKey() ? "Hold OK  ♥ Favourite      ☰  Rename / Hide" : "Hold OK  Favourite, rename or hide", 14, Ui.TEXT2);
         catHint.setGravity(Gravity.CENTER);
         catHint.setAlpha(0f);
         LinearLayout.LayoutParams chl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
@@ -386,7 +386,7 @@ public class BrowseActivity extends Activity implements TopBar.Reselect {
         });
         catList.setOnItemLongClickListener(new AdapterView.OnItemLongClickListener() {
             public boolean onItemLongClick(AdapterView<?> p, View v, int pos, long id) {
-                // Hold OK: on Fire TV (☰ hides) it favourites the category straight away;
+                // Hold OK: on Fire TV (☰ opens the menu) it favourites the category straight away;
                 // on Google TV / Android TV it asks: favourite or hide.
                 if (Ui.hasMenuKey()) toggleFavCategory(pos);
                 else categoryMenu(pos);
@@ -540,7 +540,7 @@ public class BrowseActivity extends Activity implements TopBar.Reselect {
     /** What the remote does on a category (Fire TV remotes have ☰, others only hold OK). */
     private static String catTip() {
         return Ui.hasMenuKey()
-                ? "Press ☰ on a category to hide it, or hold OK to make it a favourite (it moves near the top with a ♥)."
+                ? "Press ☰ on a category to rename or hide it, or hold OK to make it a favourite (it moves near the top with a ♥)."
                 : "Hold OK on a category to make it a favourite (it moves near the top with a ♥) or to hide it.";
     }
 
@@ -835,7 +835,7 @@ public class BrowseActivity extends Activity implements TopBar.Reselect {
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
         if (keyCode == KeyEvent.KEYCODE_MENU && catList.hasFocus()) {
-            hideAt(catList.getSelectedItemPosition()); // ☰ hides the category straight away
+            categoryMenu(catList.getSelectedItemPosition()); // ☰: favourite, rename or hide
             return true;
         }
         if (keyCode == KeyEvent.KEYCODE_MENU && content.hasFocus()) {

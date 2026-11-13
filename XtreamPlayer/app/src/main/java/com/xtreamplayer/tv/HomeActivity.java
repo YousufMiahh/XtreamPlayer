@@ -272,7 +272,7 @@ public class HomeActivity extends Activity {
         List<Item> q = prefs.queue();
         if (!q.isEmpty()) {
             LinearLayout shelf = Cards.shelf(this, "Your Queue", q, Cards.Shape.LANDSCAPE, prefs, pick, removeMenu);
-            ((TextView) shelf.getChildAt(0)).setText(Cards.titleWithMenuHint(this, "Your Queue", "to remove or reorder"));
+            ((TextView) shelf.getChildAt(0)).setText(Cards.titleWithMenuHint(this, "Your Queue", "for options"));
             localRows.addView(shelf);
         }
         if (prefs.homeShows("recent")) add(localRows, "Recent Channels", limit(prefs.history(true), 20), Cards.Shape.CHANNEL);

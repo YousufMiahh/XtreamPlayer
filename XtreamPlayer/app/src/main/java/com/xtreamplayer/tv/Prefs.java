@@ -137,7 +137,8 @@ public class Prefs {
     }
 
     private static boolean isAccountData(String k) {
-        return k.startsWith("fav_") || k.startsWith("pos_") || k.startsWith("dur_") || k.startsWith("hist_") || k.startsWith("lib_time");
+        return k.startsWith("fav_") || k.startsWith("pos_") || k.startsWith("dur_") || k.startsWith("hist_") || k.startsWith("lib_time")
+                || k.equals("watched") || k.equals("queue") || k.startsWith("catname_");
     }
 
     /** Key prefix for the current account's data ("" for the original account, so old data keeps working). */
@@ -409,6 +410,14 @@ public class Prefs {
             if (watched) setPosition(it, 0);
         }
         sp.edit().putStringSet(ns() + "watched", s).apply();
+        if (watched) {
+            List<Item> q = queue();
+            Set<String> keys = new HashSet<>();
+            for (Item it : items) keys.add(it.key());
+            boolean changed = false;
+            for (java.util.Iterator<Item> i = q.iterator(); i.hasNext(); ) if (keys.contains(i.next().key())) { i.remove(); changed = true; }
+            if (changed) saveQueue(q);
+        }
     }
 
     public int watchedCount(List<Item> items) {

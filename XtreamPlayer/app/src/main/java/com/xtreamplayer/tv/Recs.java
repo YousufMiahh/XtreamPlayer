@@ -55,6 +55,7 @@ final class Recs {
         if (sources.isEmpty()) return out;
 
         List<Item> movies = library(api, prefs, Item.MOVIE), series = library(api, prefs, Item.SERIES);
+        Tmdb.FAILED.set(false);
         Set<String> shown = new HashSet<>();
         for (Item src : sources.values()) {
             boolean tv = Item.SERIES.equals(src.type);
@@ -77,7 +78,8 @@ final class Recs {
         synchronized (Recs.class) {
             cached = out;
             cachedFor = sig;
-            cachedAt = System.currentTimeMillis();
+            // Couldn't reach TMDB (e.g. Wi-Fi not up yet): try again in a few minutes, not hours
+            cachedAt = Boolean.TRUE.equals(Tmdb.FAILED.get()) ? System.currentTimeMillis() - KEEP_MS + 5 * 60_000L : System.currentTimeMillis();
         }
         return out;
     }

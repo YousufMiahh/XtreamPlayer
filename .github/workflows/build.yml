@@ -39,7 +39,9 @@ jobs:
         working-directory: ${{ env.PROJECT_DIR }}
         env:
           KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
         run: |
+          [ -n "$KEYSTORE_PASSWORD" ] || { echo "::error title=No signing password::Add the ANDROID_KEYSTORE_PASSWORD secret"; exit 1; }
           if [ -n "$KEYSTORE_B64" ]; then echo "$KEYSTORE_B64" | base64 -d > app/release.keystore; echo "Using the key from secrets"; fi
           test -s app/release.keystore || { echo "::error title=No signing key::Add the ANDROID_KEYSTORE_B64 secret"; exit 1; }
 

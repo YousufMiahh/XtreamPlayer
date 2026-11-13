@@ -319,11 +319,11 @@ public class SeriesActivity extends Activity {
             if (e == null) continue;
             int season = e.has("season") ? e.optInt("season", fallbackSeason) : fallbackSeason;
             Item it = new Item(Item.EPISODE, e.optString("id"), "");
-            String num = e.optString("episode_num", String.valueOf(i + 1));
+            String num = MovieActivity.str(e, "episode_num", String.valueOf(i + 1));
             String t = MovieActivity.str(e, "title", series.name);
             it.num = num;
             it.name = t;
-            it.ext = e.optString("container_extension", "mp4");
+            it.ext = MovieActivity.str(e, "container_extension", "mp4");
             it.parentId = series.id;
             it.parentName = series.name;
             it.parentIcon = series.icon;

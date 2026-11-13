@@ -23,7 +23,9 @@ final class Tmdb {
     private static final String KEY = "ec34788e4bc515bbf0c395f7f3441b78";
     private static final String BASE = "https://api.themoviedb.org/3";
     private static final String UA = "YMPlayer/1.0";
-    private static final Pattern YEAR = Pattern.compile("[(\\[]((?:19|20)\\d{2})[)\\]]|\\b((?:19|20)\\d{2})\\s*$");
+    private static final Pattern YEAR = Pattern.compile("[(\\[]((?:19|20)\\d{2})[)\\]]|\\S\\s+((?:19|20)\\d{2})\\s*$");
+    /** Set when a lookup on this thread failed because TMDB couldn't be reached (not "not found"). */
+    static final ThreadLocal<Boolean> FAILED = new ThreadLocal<>();
 
     static final String MOVIE = "movie", TV = "tv";
 
@@ -34,19 +36,27 @@ final class Tmdb {
         return new JSONObject(Http.string(url, UA));
     }
 
-    /** "EN - Breaking Bad (2008) [4K]" → name "Breaking Bad", year "2008". */
+    /**
+     * "EN - Breaking Bad (2008) [4K]" → name "Breaking Bad", year "2008". Only a provider's tag is
+     * taken off the front ("EN - ", "UK: ", "NF | "), never part of a real title ("CSI: Miami",
+     * "24: Legacy", "Thor: Ragnarok"), and a title that is a year ("1917") stays.
+     * [2] is the name with an unbracketed trailing number kept ("Blade Runner 2049").
+     */
     static String[] cleanName(String raw) {
-        String n = raw == null ? "" : raw;
+        String n = raw == null ? "" : raw.trim();
+        n = n.replaceFirst("^[^|]{1,8}\\|\\s*", "");                                         // "NF | ", "EN| "
+        n = n.replaceFirst("^(?:[A-Z]{2}|(?i:ENG|AMZ|DSNP|ATVP|VOD|MULTI|4K|UHD|FHD|HD))\\s*[:\\-]\\s+", ""); // "EN - ", "UK: "
         String year = null;
         Matcher m = YEAR.matcher(n);
         if (m.find()) year = m.group(1) != null ? m.group(1) : m.group(2);
-        n = n.replaceFirst("^\\s*(?:[A-Za-z0-9]{2,4})\\s*[|:\\-]\\s+", "");    // "EN - ", "UK: "
-        n = n.replaceAll("\\(.*?\\)|\\[.*?\\]", " ");                          // "(2008)", "[Multi-Sub]"
-        n = n.replaceFirst("(?i)\\s+[-:]?\\s*S\\d{1,2}\\s*E\\d{1,3}.*$", "");    // " - S01E01 …"
-        n = n.replaceFirst("(?i)\\b(4k|uhd|fhd|hd|sd|multi|sub|dub)\\b.*$", "");
+        n = n.replaceAll("\\(.*?\\)|\\[.*?\\]", " ");                                    // "(2008)", "[Multi-Sub]"
+        n = n.replaceFirst("(?i)\\s+[-:]?\\s*S\\d{1,2}\\s*E\\d{1,3}\\b.*$", "");          // " - S01E01 …"
+        n = n.replaceFirst("\\s+(?:4K|UHD|FHD|HD|SD|MULTI|SUB|DUB|HEVC|H265)\\b.*$", "");    // " 4K", " MULTI SUB"
         n = n.replaceAll("\\s+", " ").trim();
+        String withNumber = n;
         if (year != null) n = n.replaceFirst("\\s*" + year + "\\s*$", "").trim();
-        return new String[]{n, year};
+        if (n.isEmpty()) { n = withNumber.isEmpty() ? (raw == null ? "" : raw.trim()) : withNumber; year = null; }
+        return new String[]{n, year, withNumber};
     }
 
     /**
@@ -68,11 +78,15 @@ final class Tmdb {
             String q = "/search/" + kind + "?query=" + Uri.encode(cn[0]);
             if (cn[1] != null) q += (TV.equals(kind) ? "&first_air_date_year=" : "&year=") + cn[1];
             JSONArray r = get(q).optJSONArray("results");
+            if ((r == null || r.length() == 0) && cn[1] != null && !cn[2].equals(cn[0])) { // the number is part of the title
+                r = get("/search/" + kind + "?query=" + Uri.encode(cn[2])).optJSONArray("results");
+            }
             if ((r == null || r.length() == 0) && cn[1] != null) { // wrong year in the name: try without
                 r = get("/search/" + kind + "?query=" + Uri.encode(cn[0])).optJSONArray("results");
             }
             if (r != null && r.length() > 0) id = String.valueOf(r.getJSONObject(0).optLong("id"));
         } catch (Exception e) {
+            FAILED.set(true);
             return null; // offline: try again next time
         }
         sp.edit().putString(ck, id == null ? "" : id).apply();
@@ -95,7 +109,8 @@ final class Tmdb {
                     if (!ot.isEmpty() && !ot.equals(t)) out.add(ot);
                 }
             }
-        } catch (Exception ignored) {
+        } catch (Exception e) {
+            if (out.isEmpty()) FAILED.set(true);
         }
         return out;
     }
