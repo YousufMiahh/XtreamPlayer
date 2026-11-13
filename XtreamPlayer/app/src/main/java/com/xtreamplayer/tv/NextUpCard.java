@@ -103,7 +103,13 @@ public class NextUpCard extends LinearLayout {
                 text = new Paint(Paint.ANTI_ALIAS_FLAG), ring = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final RectF r = new RectF();
         private final Path tri = new Path();
-        private final String label = "Next Episode";
+        private String label = "Next Episode";
+
+        /** "Next Episode", or "Next in Queue" when your Queue carries on with something else. */
+        public void setLabel(String s) {
+            label = s;
+            invalidate();
+        }
 
         FillButton(Context c) {
             super(c);

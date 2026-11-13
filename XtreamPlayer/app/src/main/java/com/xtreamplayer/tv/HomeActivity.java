@@ -20,6 +20,7 @@ public class HomeActivity extends Activity {
     private TextView empty;
     private boolean resumedOnce;
     private List<Item> newMovies, newSeries, topMovies, topSeries;
+    private List<Recs.Row> recRows;
     private String topSig = "";
     private static final long TOP10_EVERY = 60 * 60_000L;
     private final Runnable top10Tick = new Runnable() {
@@ -137,7 +138,7 @@ public class HomeActivity extends Activity {
     /** Loads the saved library (instant) and refreshes it in the background when it's due. */
     private void startLibrary() {
         Repo.onUpdated = new Runnable() { // Movies/Series finished in the background: refresh the rows
-            public void run() { if (!isFinishing()) { loadNewArrivals(); loadTop10(); } }
+            public void run() { if (!isFinishing()) { loadNewArrivals(); loadTop10(); loadRecs(); } }
         };
         if (Repo.isRefreshing()) { // setup is still finishing Movies & Series
             loadNewArrivals();
@@ -204,33 +205,24 @@ public class HomeActivity extends Activity {
     };
 
     private final Cards.OnMenu favMenu = new Cards.OnMenu() {
-        public void menu(Item it, View card) {
-            if (Item.EPISODE.equals(it.type)) return;
-            Open.toggleFav(HomeActivity.this, prefs, it);
-            refreshKeepingPlace(card);
+        public void menu(Item it, final View card) {
+            if (Item.LIVE.equals(it.type)) { // channels: straight in / out of favourites
+                Open.toggleFav(HomeActivity.this, prefs, it);
+                refreshKeepingPlace(card);
+                return;
+            }
+            ItemMenu.show(HomeActivity.this, prefs, it, null, new Runnable() {
+                public void run() { refreshKeepingPlace(card); }
+            });
         }
     };
 
-    /** Menu (☰) on a Continue Watching card: ask, then take it off the list. */
+    /** Menu (☰ / hold OK) on a Continue Watching or Queue card: the options for it. */
     private final Cards.OnMenu removeMenu = new Cards.OnMenu() {
         public void menu(final Item it, final View card) {
-            String name = Item.EPISODE.equals(it.type) && it.parentName != null && !it.parentName.isEmpty()
-                    ? it.parentName + " · " + it.name : it.name;
-            android.app.AlertDialog d = new android.app.AlertDialog.Builder(HomeActivity.this,
-                    Ui.DARK ? android.R.style.Theme_Material_Dialog_Alert : android.R.style.Theme_Material_Light_Dialog_Alert)
-                    .setTitle("Remove from Continue Watching?")
-                    .setMessage(name)
-                    .setPositiveButton("Remove", new android.content.DialogInterface.OnClickListener() {
-                        public void onClick(android.content.DialogInterface di, int w) {
-                            prefs.setPosition(it, 0); // no resume point = off the list
-                            refreshKeepingPlace(card);
-                        }
-                    })
-                    .setNegativeButton("Cancel", null)
-                    .create();
-            d.show();
-            android.widget.Button cancel = d.getButton(android.content.DialogInterface.BUTTON_NEGATIVE);
-            if (cancel != null) cancel.requestFocus(); // a stray OK won't remove anything
+            ItemMenu.show(HomeActivity.this, prefs, it, null, new Runnable() {
+                public void run() { refreshKeepingPlace(card); }
+            });
         }
     };
 
@@ -274,7 +266,13 @@ public class HomeActivity extends Activity {
         List<Item> cw = prefs.homeShows("continue") ? prefs.continueWatching() : new java.util.ArrayList<Item>();
         if (!cw.isEmpty()) {
             LinearLayout shelf = Cards.shelf(this, "Continue Watching", cw, Cards.Shape.LANDSCAPE, prefs, pick, removeMenu);
-            ((TextView) shelf.getChildAt(0)).setText(Cards.titleWithMenuHint(this, "Continue Watching", "to remove from list"));
+            ((TextView) shelf.getChildAt(0)).setText(Cards.titleWithMenuHint(this, "Continue Watching", "for options"));
+            localRows.addView(shelf);
+        }
+        List<Item> q = prefs.queue();
+        if (!q.isEmpty()) {
+            LinearLayout shelf = Cards.shelf(this, "Your Queue", q, Cards.Shape.LANDSCAPE, prefs, pick, removeMenu);
+            ((TextView) shelf.getChildAt(0)).setText(Cards.titleWithMenuHint(this, "Your Queue", "to remove or reorder"));
             localRows.addView(shelf);
         }
         if (prefs.homeShows("recent")) add(localRows, "Recent Channels", limit(prefs.history(true), 20), Cards.Shape.CHANNEL);
@@ -288,6 +286,7 @@ public class HomeActivity extends Activity {
         remoteRows.removeAllViews();
         if (prefs.homeShows("top_movies")) add(remoteRows, "Top 10 Movies on Netflix UK", topMovies, Cards.Shape.POSTER);
         if (prefs.homeShows("top_series")) add(remoteRows, "Top 10 Series on Netflix UK", topSeries, Cards.Shape.POSTER);
+        if (recRows != null && prefs.homeShows("recommended")) for (Recs.Row r : recRows) add(remoteRows, r.title, r.items, Cards.Shape.POSTER);
         if (newMovies != null && prefs.homeShows("new_movies")) add(remoteRows, "Recently Added Movies", newMovies, Cards.Shape.POSTER);
         if (newSeries != null && prefs.homeShows("new_series")) add(remoteRows, "Recently Added Series", newSeries, Cards.Shape.POSTER);
         updateEmpty();
@@ -367,6 +366,30 @@ public class HomeActivity extends Activity {
         });
     }
 
+    /** "Because you watched …" rows (TMDB recommendations that your provider has). */
+    private void loadRecs() {
+        if (!prefs.homeShows("recommended")) return;
+        Async.runOn(Top10.WORKER, new Async.Work<List<Recs.Row>>() {
+            public List<Recs.Row> run() throws Exception { return Recs.rows(getApplicationContext(), api, prefs); }
+        }, new Async.Done<List<Recs.Row>>() {
+            public void done(List<Recs.Row> r, Exception e) {
+                if (isFinishing() || r == null) return;
+                StringBuilder b = new StringBuilder();
+                for (Recs.Row row : r) b.append(row.title).append(sig(row.items));
+                String s = b.toString();
+                if (s.equals(recSig)) return;
+                recSig = s;
+                recRows = r;
+                View f = getCurrentFocus();
+                boolean inRemote = f != null && isInside(f, remoteRows);
+                buildRemoteRows();
+                if (inRemote || getCurrentFocus() == null) focusFirstCard();
+            }
+        });
+    }
+
+    private String recSig;
+
     private static String sig(List<Item> l) {
         StringBuilder b = new StringBuilder();
         if (l != null) for (Item it : l) b.append(it.key()).append(',');
@@ -378,6 +401,7 @@ public class HomeActivity extends Activity {
         super.onStart();
         Async.MAIN.removeCallbacks(top10Tick);
         Async.MAIN.post(top10Tick); // check now (cheap if not due), then every hour while Home is open
+        loadRecs(); // "Because you watched…" (cached for a few hours)
     }
 
     @Override

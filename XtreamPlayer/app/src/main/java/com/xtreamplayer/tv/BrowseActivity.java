@@ -498,7 +498,7 @@ public class BrowseActivity extends Activity implements TopBar.Reselect {
                             "Search this section at the top, then your favourites, Continue Watching and everything else. "
                                     + catTip()),
                     new Coach.Step(midBox, "Pick something",
-                            "OK opens the details page, with Play, Resume, the trailer and Favourite. " + menu + " here adds it to your favourites."));
+                            "OK opens the details page, with Play, Resume, the trailer and Favourite. " + menu + " here for Favourite, Add to Queue and Mark as Watched."));
         }
     }
 
@@ -511,13 +511,30 @@ public class BrowseActivity extends Activity implements TopBar.Reselect {
         new android.app.AlertDialog.Builder(this, Ui.DARK ? android.R.style.Theme_Material_Dialog_Alert : android.R.style.Theme_Material_Light_Dialog_Alert)
                 .setTitle(c.name)
                 .setItems(new String[]{fav ? "♥  Remove from favourites" : "♡  Favourite",
-                        "Hide"}, new android.content.DialogInterface.OnClickListener() {
+                        "✎  Rename", "Hide"}, new android.content.DialogInterface.OnClickListener() {
                     public void onClick(android.content.DialogInterface d, int which) {
                         if (which == 0) toggleFavCategory(pos);
-                        else if (which == 1) hideCategory(c);
+                        else if (which == 1) FilterSettings.askName(BrowseActivity.this, prefs, type, rawCategory(c));
+                        else if (which == 2) hideCategory(c);
                     }
                 })
                 .show();
+    }
+
+    /** The category as the provider names it (the list may show your own name for it). */
+    private Item rawCategory(Item c) {
+        try {
+            for (Item r : Repo.categories(api, type)) if (r.id.equals(c.id)) return r;
+        } catch (Exception ignored) {
+        }
+        return c;
+    }
+
+    @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        // Back from renaming a category (a dialog): show the new name
+        if (hasFocus && filterVersion != 0 && filterVersion != Filters.version() && catAdapter.getCount() > 0) reloadCategories(false);
     }
 
     /** What the remote does on a category (Fire TV remotes have ☰, others only hold OK). */
@@ -717,10 +734,20 @@ public class BrowseActivity extends Activity implements TopBar.Reselect {
         Open.item(this, list.get(pos), list);
     }
 
-    private void toggleFav(int pos) {
+    private void toggleFav(final int pos) {
         if (pos < 0 || pos >= contentAdapter.getCount()) return;
         Item it = contentAdapter.getItem(pos);
+        if (!live) { // films & series: Favourite, Queue, Watched…
+            ItemMenu.show(this, prefs, it, null, new Runnable() {
+                public void run() { favChanged(pos); }
+            });
+            return;
+        }
         Open.toggleFav(this, prefs, it);
+        favChanged(pos);
+    }
+
+    private void favChanged(int pos) {
         if (currentCat != null && FAV.equals(currentCat.id)) {
             List<Item> l = prefs.favs(type);
             contentAdapter.set(l);

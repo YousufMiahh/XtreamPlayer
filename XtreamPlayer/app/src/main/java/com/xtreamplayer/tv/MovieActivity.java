@@ -123,6 +123,23 @@ public class MovieActivity extends Activity {
             }
         });
         addButton(favBtn);
+        final Button queueBtn = Ui.button(this, prefs.inQueue(movie) ? "✓  In Queue" : "＋  Queue");
+        queueBtn.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                if (prefs.inQueue(movie)) prefs.queueRemove(movie); else prefs.queueAdd(movie);
+                queueBtn.setText(prefs.inQueue(movie) ? "✓  In Queue" : "＋  Queue");
+            }
+        });
+        addButton(queueBtn);
+        final Button watchedBtn = Ui.button(this, prefs.isWatched(movie) ? "✓  Watched" : "○  Mark Watched");
+        watchedBtn.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                prefs.setWatched(movie, !prefs.isWatched(movie));
+                buildButtons();
+                buttons.getChildAt(buttons.getChildCount() - 1).requestFocus();
+            }
+        });
+        addButton(watchedBtn);
         if (!buttons.hasFocus()) playBtn.requestFocus();
     }
 
@@ -152,6 +169,7 @@ public class MovieActivity extends Activity {
                 if (isFinishing() || r == null) return;
                 JSONObject info = r.optJSONObject("info");
                 if (info == null) return;
+                if (movie.tmdb == null) movie.tmdb = str(info, "tmdb_id", str(info, "tmdb", null));
                 String p = str(info, "plot", str(info, "description", null));
                 if (p != null) {
                     plot.setText(p);

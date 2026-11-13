@@ -190,4 +190,74 @@ final class FilterSettings {
             }
         });
     }
+
+    // ------------------------------------------------------------ your own category names
+
+    /** Settings → Rename Categories: pick a section, pick a category, type a new name (blank = original). */
+    static void rename(final Activity a, final Prefs prefs) {
+        final String[] types = {Item.LIVE, Item.MOVIE, Item.SERIES};
+        new android.app.AlertDialog.Builder(a, Ui.DARK ? android.R.style.Theme_Material_Dialog_Alert : android.R.style.Theme_Material_Light_Dialog_Alert)
+                .setTitle("Rename categories in…")
+                .setItems(new String[]{"Live TV", "Movies", "Series"}, new android.content.DialogInterface.OnClickListener() {
+                    public void onClick(android.content.DialogInterface d, int w) { pickCategory(a, prefs, types[w]); }
+                })
+                .show();
+    }
+
+    private static void pickCategory(final Activity a, final Prefs prefs, final String type) {
+        final XtreamApi api = new XtreamApi(prefs);
+        Async.run(new Async.Work<List<Item>>() {
+            public List<Item> run() throws Exception { return Repo.categories(api, type); }
+        }, new Async.Done<List<Item>>() {
+            public void done(final List<Item> cats, Exception e) {
+                if (a.isFinishing()) return;
+                if (cats == null || cats.isEmpty()) {
+                    Toast.makeText(a, "Couldn't load the categories", Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                String[] labels = new String[cats.size()];
+                for (int i = 0; i < cats.size(); i++) {
+                    String mine = prefs.catName(type, cats.get(i).id);
+                    labels[i] = mine == null ? cats.get(i).name : "✎  " + mine + "   (" + cats.get(i).name + ")";
+                }
+                new android.app.AlertDialog.Builder(a, Ui.DARK ? android.R.style.Theme_Material_Dialog_Alert : android.R.style.Theme_Material_Light_Dialog_Alert)
+                        .setTitle("Pick a category to rename")
+                        .setItems(labels, new android.content.DialogInterface.OnClickListener() {
+                            public void onClick(android.content.DialogInterface d, int w) { askName(a, prefs, type, cats.get(w)); }
+                        })
+                        .show();
+            }
+        });
+    }
+
+    static void askName(final Activity a, final Prefs prefs, final String type, final Item cat) {
+        final android.widget.EditText box = new android.widget.EditText(a);
+        String mine = prefs.catName(type, cat.id);
+        box.setText(mine == null ? cat.name : mine);
+        box.setSelectAllOnFocus(true);
+        box.setSingleLine(true);
+        android.widget.FrameLayout wrap = new android.widget.FrameLayout(a);
+        int p = Ui.dp(a, 22);
+        wrap.setPadding(p, p / 2, p, 0);
+        wrap.addView(box);
+        new android.app.AlertDialog.Builder(a, Ui.DARK ? android.R.style.Theme_Material_Dialog_Alert : android.R.style.Theme_Material_Light_Dialog_Alert)
+                .setTitle("Rename “" + cat.name + "”")
+                .setView(wrap)
+                .setPositiveButton("Save", new android.content.DialogInterface.OnClickListener() {
+                    public void onClick(android.content.DialogInterface d, int w) {
+                        String n = box.getText().toString().trim();
+                        prefs.setCatName(type, cat.id, n.equals(cat.name) ? null : n);
+                        Filters.changed();
+                        Toast.makeText(a, n.isEmpty() || n.equals(cat.name) ? "Original name restored" : "Renamed to " + n, Toast.LENGTH_SHORT).show();
+                    }
+                })
+                .setNeutralButton("Original Name", new android.content.DialogInterface.OnClickListener() {
+                    public void onClick(android.content.DialogInterface d, int w) {
+                        prefs.setCatName(type, cat.id, null);
+                        Filters.changed();
+                    }
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
+    }
 }

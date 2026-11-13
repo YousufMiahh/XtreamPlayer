@@ -165,6 +165,9 @@ public final class Adapters {
         final ImageView img;
         final FrameLayout frame;
         final TextView title;
+        TextView badge;
+
+        void setWatched(boolean w) { badge.setVisibility(w ? VISIBLE : GONE); }
         private boolean hot;
 
         public PosterCell(Context c, int w, int h) {
@@ -181,6 +184,11 @@ public final class Adapters {
             frame = new FrameLayout(c);
             frame.setElevation(Ui.dp(c, 2));
             frame.addView(img, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+            badge = Cards.watchedBadge(c);
+            badge.setVisibility(GONE);
+            FrameLayout.LayoutParams blp = new FrameLayout.LayoutParams(Ui.dp(c, 26), Ui.dp(c, 26), Gravity.TOP | Gravity.END);
+            blp.topMargin = blp.rightMargin = Ui.dp(c, 8);
+            frame.addView(badge, blp);
             title = Ui.text(c, "", 15, Ui.TEXT2);
             Ui.lines(title, 2);
             title.setGravity(Gravity.CENTER_HORIZONTAL);
@@ -294,6 +302,7 @@ public final class Adapters {
             PosterCell cell = v instanceof PosterCell ? (PosterCell) v : new PosterCell(ctx, w, h);
             Item it = getItem(pos);
             cell.title.setText(prefs.isFav(it) ? "♥ " + it.name : it.name);
+            cell.setWatched(prefs.isWatched(it));
             ImageLoader.load(cell.img, it.icon, 300, 450);
             cell.setHot(isHot(pos), false);
             return cell;

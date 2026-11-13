@@ -192,9 +192,18 @@ public final class Filters {
     public static List<Item> categories(Prefs p, String type, List<Item> all) {
         if (all == null) return null;
         Set<String> tags = hiddenTags(p), cats = hiddenCategories(p, type), shows = alwaysShown(p, type);
-        if (tags.isEmpty() && cats.isEmpty()) return all;
         List<Item> out = new ArrayList<>();
-        for (Item c : all) if (!isHidden(c, tags, cats, shows)) out.add(c);
+        for (Item c : all) {
+            if (isHidden(c, tags, cats, shows)) continue;
+            String n = p.catName(type, c.id); // renamed by you (the original name still decides country filters)
+            if (n != null) {
+                Item r = new Item(c.type, c.id, n);
+                r.categoryId = c.categoryId;
+                r.info = c.info;
+                c = r;
+            }
+            out.add(c);
+        }
         return out;
     }
 

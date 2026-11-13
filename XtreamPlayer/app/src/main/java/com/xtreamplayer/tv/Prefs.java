@@ -362,9 +362,9 @@ public class Prefs {
 
     /** Rows that can be switched on or off in Settings → Customise Home Screen (all on by default). */
     public static final String[] HOME_KEYS = {"continue", "recent", "fav_live", "fav_movie", "fav_series",
-            "top_movies", "top_series", "new_movies", "new_series"};
+            "top_movies", "top_series", "recommended", "new_movies", "new_series"};
     public static final String[] HOME_NAMES = {"Continue Watching", "Recent Channels", "Favourite Channels",
-            "Favourite Movies", "Favourite Series", "Top 10 Movies in the UK", "Top 10 Series in the UK",
+            "Favourite Movies", "Favourite Series", "Top 10 Movies in the UK", "Top 10 Series in the UK", "Because You Watched…",
             "Recently Added Movies", "Recently Added Series"};
 
     public boolean homeShows(String key) { return sp.getBoolean("home_" + key, true); }
@@ -384,6 +384,91 @@ public class Prefs {
 
     public void setDuration(Item it, long ms) {
         if (ms > 0) sp.edit().putLong(ns() + "dur_" + it.key(), ms).apply();
+    }
+
+    // ================================================================ already watched (per account)
+
+    public boolean isWatched(Item it) { return it != null && set("watched").contains(it.key()); }
+
+    /** Watched: off Continue Watching and out of the queue; unwatched: shows as new again. */
+    public void setWatched(Item it, boolean watched) {
+        if (it == null) return;
+        Set<String> s = new HashSet<>(set("watched"));
+        if (watched) s.add(it.key()); else s.remove(it.key());
+        sp.edit().putStringSet(ns() + "watched", s).apply();
+        if (watched) {
+            setPosition(it, 0);
+            queueRemove(it);
+        }
+    }
+
+    public void setWatched(List<Item> items, boolean watched) {
+        Set<String> s = new HashSet<>(set("watched"));
+        for (Item it : items) {
+            if (watched) s.add(it.key()); else s.remove(it.key());
+            if (watched) setPosition(it, 0);
+        }
+        sp.edit().putStringSet(ns() + "watched", s).apply();
+    }
+
+    public int watchedCount(List<Item> items) {
+        Set<String> s = set("watched");
+        int n = 0;
+        for (Item it : items) if (s.contains(it.key())) n++;
+        return n;
+    }
+
+    // ================================================================ playback queue (per account, in order)
+
+    public List<Item> queue() {
+        List<Item> out = new ArrayList<>();
+        try {
+            JSONArray a = new JSONArray(sp.getString(ns() + "queue", "[]"));
+            for (int i = 0; i < a.length(); i++) out.add(Item.fromJson(a.getJSONObject(i)));
+        } catch (Exception ignored) {
+        }
+        return out;
+    }
+
+    private void saveQueue(List<Item> l) {
+        JSONArray a = new JSONArray();
+        for (Item it : l) a.put(it.toJson());
+        sp.edit().putString(ns() + "queue", a.toString()).apply();
+    }
+
+    public boolean inQueue(Item it) {
+        if (it == null) return false;
+        for (Item q : queue()) if (q.key().equals(it.key())) return true;
+        return false;
+    }
+
+    public void queueAdd(Item it) {
+        List<Item> l = queue();
+        for (Item q : l) if (q.key().equals(it.key())) return;
+        l.add(it);
+        saveQueue(l);
+    }
+
+    public void queueRemove(Item it) {
+        if (it == null) return;
+        List<Item> l = queue();
+        for (int i = l.size() - 1; i >= 0; i--) if (l.get(i).key().equals(it.key())) l.remove(i);
+        saveQueue(l);
+    }
+
+    /** What plays after this (the first queued item that isn't this one), or null. */
+    public Item queueNextAfter(Item current) {
+        for (Item q : queue()) if (current == null || !q.key().equals(current.key())) return q;
+        return null;
+    }
+
+    // ================================================================ your own category names (per account)
+
+    public String catName(String type, String id) { return sp.getString(ns() + "catname_" + type + "_" + id, null); }
+
+    public void setCatName(String type, String id, String name) {
+        if (name == null || name.trim().isEmpty()) sp.edit().remove(ns() + "catname_" + type + "_" + id).apply();
+        else sp.edit().putString(ns() + "catname_" + type + "_" + id, name.trim()).apply();
     }
 
     // ================================================================ watch history (per account, newest first)

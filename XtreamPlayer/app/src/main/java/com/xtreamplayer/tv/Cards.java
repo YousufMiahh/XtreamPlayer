@@ -90,6 +90,23 @@ public final class Cards {
         return card;
     }
 
+    /** Small "✓" in the corner of a card you've already watched. */
+    public static TextView watchedBadge(Context c) {
+        TextView b = Ui.medium(c, "✓", 15, 0xFF000000);
+        b.setTypeface(Ui.semibold());
+        b.setGravity(Gravity.CENTER);
+        b.setBackground(Ui.rounded(c, 0xF2FFFFFF, 0, 14));
+        return b;
+    }
+
+    static void markWatched(LinearLayout card) {
+        if (!(card.getChildAt(0) instanceof FrameLayout)) return;
+        Context c = card.getContext();
+        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(Ui.dp(c, 28), Ui.dp(c, 28), Gravity.TOP | Gravity.END);
+        lp.topMargin = lp.rightMargin = Ui.dp(c, 10);
+        ((FrameLayout) card.getChildAt(0)).addView(watchedBadge(c), lp);
+    }
+
     public static View progressBar(Context c, float progress) {
         LinearLayout bar = new LinearLayout(c);
         bar.setOrientation(LinearLayout.HORIZONTAL);
@@ -131,6 +148,7 @@ public final class Cards {
             }
             final Item it = items.get(i);
             LinearLayout card = card(c, shape, it.icon, it.name, null, 0);
+            if (prefs != null && prefs.isWatched(it)) markWatched(card);
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
             lp.rightMargin = gap;
             row.addView(card, lp);
@@ -200,6 +218,7 @@ public final class Cards {
                 }
             }
             LinearLayout card = card(c, shape, img, it.name, sub, progress);
+            if (prefs != null && prefs.isWatched(it)) markWatched(card);
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
             lp.rightMargin = Ui.dp(c, 32);
             row.addView(card, lp);

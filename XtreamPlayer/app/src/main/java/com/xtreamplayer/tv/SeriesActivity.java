@@ -230,9 +230,13 @@ public class SeriesActivity extends Activity {
         });
     }
 
+    /** The series' TMDB id when the provider gives one (for Skip Intro). */
+    private String seriesTmdb;
+
     private void parse(JSONObject r) {
         JSONObject info = r.optJSONObject("info");
         if (info != null) {
+            seriesTmdb = MovieActivity.str(info, "tmdb", MovieActivity.str(info, "tmdb_id", null));
             String p = MovieActivity.str(info, "plot", null);
             if (p != null) {
                 series.plot = p;
@@ -323,6 +327,8 @@ public class SeriesActivity extends Activity {
             it.parentId = series.id;
             it.parentName = series.name;
             it.parentIcon = series.icon;
+            it.season = season;
+            it.tmdb = seriesTmdb;
             JSONObject ei = e.optJSONObject("info");
             if (ei != null) {
                 String d = MovieActivity.str(ei, "duration", null);
@@ -359,12 +365,30 @@ public class SeriesActivity extends Activity {
         if (eps == null) return;
         int upId = View.NO_ID;
         for (TextView p : seasonPills) if (Integer.valueOf(activeSeason).equals(p.getTag())) upId = p.getId();
+        updatePillLabels();
         for (final Item ep : eps) {
             long pos = prefs.position(ep), dur = prefs.duration(ep);
-            String sub = pos > 0 && dur > 0 ? fmt(Math.max(0, dur - pos)) + " left" : ep.duration;
+            boolean watched = prefs.isWatched(ep);
+            String sub = watched ? "✓ Watched" : pos > 0 && dur > 0 ? fmt(Math.max(0, dur - pos)) + " left" : ep.duration;
             String img = ep.icon != null ? ep.icon : series.icon;
-            LinearLayout card = Cards.card(this, Cards.Shape.LANDSCAPE, img, ep.num + ".  " + ep.name, sub,
+            final LinearLayout card = Cards.card(this, Cards.Shape.LANDSCAPE, img, ep.num + ".  " + ep.name, sub,
                     dur > 0 ? pos / (float) dur : 0);
+            if (watched) Cards.markWatched(card);
+            card.setOnLongClickListener(new View.OnLongClickListener() {
+                public boolean onLongClick(View v) {
+                    episodeMenu(ep, eps, card);
+                    return true;
+                }
+            });
+            card.setOnKeyListener(new View.OnKeyListener() {
+                public boolean onKey(View v, int code, KeyEvent e) {
+                    if (code == KeyEvent.KEYCODE_MENU && e.getAction() == KeyEvent.ACTION_DOWN) {
+                        episodeMenu(ep, eps, card);
+                        return true;
+                    }
+                    return false;
+                }
+            });
             card.setNextFocusUpId(upId);
             final View.OnFocusChangeListener base = card.getOnFocusChangeListener();
             card.setOnFocusChangeListener(new View.OnFocusChangeListener() {
@@ -385,6 +409,29 @@ public class SeriesActivity extends Activity {
             episodeRow.addView(card, lp);
         }
         episodeScroll.scrollTo(0, 0);
+    }
+
+    /** ☰ / hold OK on an episode: Add to Queue, Mark as Watched, Mark Season as Watched… */
+    private void episodeMenu(Item ep, List<Item> season, final View card) {
+        final int idx = episodeRow.indexOfChild(card);
+        ItemMenu.show(this, prefs, ep, season, new Runnable() {
+            public void run() {
+                buildEpisodes();
+                buildButtons();
+                if (idx >= 0 && idx < episodeRow.getChildCount()) episodeRow.getChildAt(idx).requestFocus();
+            }
+        });
+    }
+
+    /** "Season 2  ✓" when it's all watched, "Season 2  3/10" part way through. */
+    private void updatePillLabels() {
+        for (TextView p : seasonPills) {
+            int key = (Integer) p.getTag();
+            List<Item> l = seasons.get(key);
+            String base = key == 0 ? "Specials" : "Season " + key;
+            int n = l == null ? 0 : prefs.watchedCount(l);
+            p.setText(l == null || n == 0 ? base : n == l.size() ? base + "  ✓" : base + "  " + n + "/" + l.size());
+        }
     }
 
     static String fmt(long ms) {

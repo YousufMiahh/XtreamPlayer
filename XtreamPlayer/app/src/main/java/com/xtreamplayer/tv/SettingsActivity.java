@@ -103,6 +103,9 @@ public class SettingsActivity extends Activity {
         row("Countries & Languages", FilterSettings.countriesLabel(prefs), new Action() {
             public void run(TextView v) { FilterSettings.countries(SettingsActivity.this, prefs, v); }
         });
+        row("Rename Categories", "Give categories your own names", new Action() {
+            public void run(TextView v) { FilterSettings.rename(SettingsActivity.this, prefs); }
+        });
         row("Hidden Categories", FilterSettings.hiddenLabel(prefs), new Action() {
             public void run(TextView v) { FilterSettings.hidden(SettingsActivity.this, prefs, v); }
         });
