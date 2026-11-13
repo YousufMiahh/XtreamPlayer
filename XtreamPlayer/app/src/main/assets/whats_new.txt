@@ -1,0 +1,7 @@
+- Already watched: films and episodes get a ✓ once you've watched them. Hold OK (or ☰) on one to mark it yourself, or mark a whole season. Season tabs show how far through you are.
+- Your Queue: hold OK on a film or episode and choose Add to Queue. It's a row on Home, and plays next when what you're watching ends.
+- Skip Intro: a Skip Intro button pops up during a series' opening titles. Press OK to jump past it.
+- Next Episode: the Next Episode card now appears as the end credits start, and plays the next one, or the next in your Queue, when its timer fills.
+- Because you watched: new rows on Home recommend films and series from your provider, based on what you've watched lately.
+- Rename categories: give any category your own name in Settings → Rename Categories, or press ☰ on a category.
+- What's New: this summary now pops up after each update.

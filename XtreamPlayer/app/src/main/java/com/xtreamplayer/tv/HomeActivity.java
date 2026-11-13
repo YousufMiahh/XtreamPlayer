@@ -81,7 +81,7 @@ public class HomeActivity extends Activity {
         }, 1500);
         Async.MAIN.postDelayed(new Runnable() { // new version on GitHub? (not over the tutorial)
             public void run() {
-                if (!isFinishing() && !Coach.showing(HomeActivity.this)) Updater.check(HomeActivity.this, false);
+                if (!isFinishing() && !Coach.showing(HomeActivity.this) && !WhatsNew.maybeShow(HomeActivity.this)) Updater.check(HomeActivity.this, false);
             }
         }, 3000);
     }

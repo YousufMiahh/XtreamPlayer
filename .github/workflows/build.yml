@@ -60,6 +60,7 @@ jobs:
           tag_name: v1.0.${{ github.run_number }}
           name: Xtream Player 1.0.${{ github.run_number }}
           files: XtreamPlayer.apk
+          body_path: XtreamPlayer/app/src/main/assets/whats_new.txt
           make_latest: true
 
       # Test builds from the dev branch: a separate pre-release that never becomes "latest",

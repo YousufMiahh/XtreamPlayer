@@ -232,6 +232,9 @@ public class SettingsActivity extends Activity {
         row("Check for Updates", "Get the latest version", new Action() {
             public void run(TextView v) { Updater.check(SettingsActivity.this, true); }
         });
+        row("What's New", "What changed in this version", new Action() {
+            public void run(TextView v) { WhatsNew.show(SettingsActivity.this, WhatsNew.notes(SettingsActivity.this)); }
+        });
         TextView credit = Ui.medium(this, "Developed by Yousuf Miah", 16, Ui.TEXT2);
         credit.setGravity(Gravity.CENTER);
         credit.setPadding(0, Ui.dp(this, 22), 0, Ui.dp(this, 10));

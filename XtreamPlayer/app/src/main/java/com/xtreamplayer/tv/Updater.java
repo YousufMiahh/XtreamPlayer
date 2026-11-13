@@ -108,7 +108,7 @@ public final class Updater {
             String tag = o.optString("tag_name", "");
             r.number = Integer.parseInt(tag.substring(tag.lastIndexOf('.') + 1)); // "v1.0.51" → 51
             r.name = APP + " " + tag.replaceFirst("^v", "");
-            r.notes = o.optString("body", "").trim();
+            r.notes = o.optString("body", "").trim().replaceAll("(?m)^- ", "•  ");
             JSONArray assets = o.optJSONArray("assets");
             for (int i = 0; assets != null && i < assets.length(); i++) {
                 JSONObject as = assets.getJSONObject(i);
