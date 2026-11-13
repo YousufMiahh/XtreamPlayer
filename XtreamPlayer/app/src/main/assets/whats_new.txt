@@ -1,6 +1,1 @@
-- Continue Watching: when you finish an episode, the next one takes its place, ready to start. Episodes started from Continue Watching or the Queue now also play on into the next one.
-- Categories: press ☰ on a category for Favourite, Rename and Hide (it used to hide it straight away).
-- Coming back to a film near its end now carries on where you were instead of starting again.
-- If a stream drops part-way through, it reconnects and carries on, instead of marking it watched and moving on.
-- Better matching for Skip Intro and "Because you watched", so titles like "CSI: Miami" or "1917" are found correctly.
-- Marking a season as watched also takes its episodes out of your Queue.
+- Picture: press ☰ (or hold OK) while watching and choose Fit, Fill screen, Stretch, 16:9 or 4:3. It's remembered for each channel, film and series.

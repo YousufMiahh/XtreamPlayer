@@ -138,7 +138,7 @@ public class Prefs {
 
     private static boolean isAccountData(String k) {
         return k.startsWith("fav_") || k.startsWith("pos_") || k.startsWith("dur_") || k.startsWith("hist_") || k.startsWith("lib_time")
-                || k.equals("watched") || k.equals("queue") || k.equals("upnext") || k.startsWith("catname_");
+                || k.equals("watched") || k.equals("queue") || k.equals("upnext") || k.startsWith("catname_") || k.startsWith("pic_");
     }
 
     /** Key prefix for the current account's data ("" for the original account, so old data keeps working). */
@@ -393,6 +393,20 @@ public class Prefs {
         s = new HashSet<>(s);
         s.remove(it.key());
         sp.edit().putStringSet(ns() + "upnext", s).apply();
+    }
+
+    // ================================================================ picture shape (per channel / film / series)
+
+    /** 0 Fit, 1 Fill, 2 Stretch, 3 16:9, 4 4:3. Episodes share their series' setting. */
+    public int picture(Item it) { return it == null ? 0 : sp.getInt(ns() + "pic_" + pictureKey(it), 0); }
+
+    public void setPicture(Item it, int mode) {
+        if (mode <= 0) sp.edit().remove(ns() + "pic_" + pictureKey(it)).apply();
+        else sp.edit().putInt(ns() + "pic_" + pictureKey(it), mode).apply();
+    }
+
+    private static String pictureKey(Item it) {
+        return Item.EPISODE.equals(it.type) && it.parentId != null ? "series_" + it.parentId : it.key();
     }
 
     public void setPosition(Item it, long ms) {

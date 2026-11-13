@@ -75,5 +75,9 @@ public interface Engine {
     /** Who hears about playback events (changes when the mini player moves between screens). */
     void setListener(Listener l);
 
+    /** Picture shape: PIC_FIT (whole picture, bars), PIC_FILL (zoom to fill, edges cropped) or PIC_STRETCH. */
+    int PIC_FIT = 0, PIC_FILL = 1, PIC_STRETCH = 2;
+    void setPicture(int mode);
+
     void release();
 }

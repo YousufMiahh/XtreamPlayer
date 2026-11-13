@@ -74,6 +74,14 @@ public class VlcEngine implements Engine {
     }
 
     public View view() { return layout; }
+
+    private MediaPlayer.ScaleType scale = MediaPlayer.ScaleType.SURFACE_BEST_FIT;
+
+    public void setPicture(int mode) {
+        scale = mode == PIC_FILL ? MediaPlayer.ScaleType.SURFACE_FIT_SCREEN
+                : mode == PIC_STRETCH ? MediaPlayer.ScaleType.SURFACE_FILL : MediaPlayer.ScaleType.SURFACE_BEST_FIT;
+        if (attached && !released) mp.setVideoScale(scale);
+    }
     public String name() { return "VLC player"; }
 
     /** Attach the video surface; done on first load, once the view is in the window. */
@@ -83,7 +91,7 @@ public class VlcEngine implements Engine {
         if (attached) return;
         attached = true;
         mp.attachViews(layout, null, true, false);
-        mp.setVideoScale(MediaPlayer.ScaleType.SURFACE_BEST_FIT);
+        mp.setVideoScale(scale);
     }
 
     /** Remembered across a crash: see App. Written synchronously so it survives a native crash. */

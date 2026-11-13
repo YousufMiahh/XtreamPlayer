@@ -82,6 +82,11 @@ public class ExoEngine implements Engine {
     public void setListener(Listener listener) { l = listener; }
 
     public View view() { return view; }
+
+    public void setPicture(int mode) {
+        // AspectRatioFrameLayout: RESIZE_MODE_FIT 0, RESIZE_MODE_FILL 3 (stretch), RESIZE_MODE_ZOOM 4
+        view.setResizeMode(mode == PIC_FILL ? 4 : mode == PIC_STRETCH ? 3 : 0);
+    }
     public String name() { return "Android player"; }
 
     public void load(String url, long startMs) {
