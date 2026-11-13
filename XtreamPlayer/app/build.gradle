@@ -30,9 +30,11 @@ android {
         release {
             // Fixed key so every new build installs over the previous one as an update.
             storeFile file("release.keystore")
-            storePassword "xtreamplayer"
+            // Password from the repo's secrets (CI); the old one until that's set up
+            def pw = System.getenv("KEYSTORE_PASSWORD") ?: "xtreamplayer"
+            storePassword pw
             keyAlias "xtream"
-            keyPassword "xtreamplayer"
+            keyPassword pw
         }
     }
 

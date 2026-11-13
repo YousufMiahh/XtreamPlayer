@@ -34,8 +34,19 @@ jobs:
           echo "PROJECT_DIR=$(dirname "$f")" >> "$GITHUB_ENV"
           echo "Project found in: $(dirname "$f")"
 
+      # The signing key lives in the repo's secrets, not in the code
+      - name: Signing key
+        working-directory: ${{ env.PROJECT_DIR }}
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then echo "$KEYSTORE_B64" | base64 -d > app/release.keystore; echo "Using the key from secrets"; fi
+          test -s app/release.keystore || { echo "::error title=No signing key::Add the ANDROID_KEYSTORE_B64 secret"; exit 1; }
+
       - name: Build release APK
         working-directory: ${{ env.PROJECT_DIR }}
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
         run: |
           set -o pipefail
           gradle lintRelease assembleRelease --no-daemon --stacktrace 2>&1 | tee "$GITHUB_WORKSPACE/build.log"
