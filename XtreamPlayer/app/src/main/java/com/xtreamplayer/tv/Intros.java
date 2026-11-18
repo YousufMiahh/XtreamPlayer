@@ -60,12 +60,31 @@ final class Intros {
         } catch (Exception e) {
             return none("TheIntroDB answered in an unexpected way");
         }
+        // Nothing for the intro or recap in this cut (the episode's length picks one): the intro is
+        // usually at the same place in every cut, so take it from the episode as a whole
+        boolean otherCut = false;
+        if (s.status.isEmpty() && !s.hasIntro() && !s.hasRecap() && durationMs > 60_000) {
+            try {
+                Segments any = parse(new JSONObject(Http.string(
+                        "https://api.theintrodb.org/v4/media?tmdb_id=" + tmdbId + "&season=" + season + "&episode=" + episode,
+                        "Mozilla/5.0 (YMPlayer)")));
+                if (any.hasIntro() || any.hasRecap()) {
+                    s.introStart = any.introStart; s.introEnd = any.introEnd;
+                    s.recapStart = any.recapStart; s.recapEnd = any.recapEnd;
+                    if (s.creditsStart <= 0) s.creditsStart = any.creditsStart;
+                    otherCut = true;
+                }
+            } catch (Exception ignored) {
+            }
+        }
         if (s.status.isEmpty()) {
             StringBuilder b = new StringBuilder("TMDB " + tmdbId + " S" + season + "E" + episode + ": ");
             if (s.hasRecap()) b.append("recap ").append(clock(s.recapStart)).append("–").append(clock(s.recapEnd)).append("  ");
             if (s.hasIntro()) b.append("intro ").append(clock(s.introStart)).append("–").append(clock(s.introEnd)).append("  ");
             if (s.creditsStart > 0) b.append("credits ").append(clock(s.creditsStart));
             if (!s.hasIntro() && !s.hasRecap() && s.creditsStart <= 0) b.append("no times yet");
+            else if (!s.hasIntro() && !s.hasRecap()) b.append("  ·  no intro or recap times in TheIntroDB yet");
+            if (otherCut) b.append("  (intro from another cut)");
             s.status = b.toString().trim();
         }
         lastStatus = s.status;
