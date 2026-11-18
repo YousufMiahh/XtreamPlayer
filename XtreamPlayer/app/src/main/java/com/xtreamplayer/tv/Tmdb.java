@@ -36,6 +36,22 @@ final class Tmdb {
         return new JSONObject(Http.string(url, UA));
     }
 
+    private static final java.util.Map<String, String> IMDB = new java.util.HashMap<>();
+
+    /** A series' IMDb id ("tt0903747") from its TMDB id, for the skip-intro databases that use it; null if none. */
+    static String imdbId(String tvId) {
+        synchronized (IMDB) { if (IMDB.containsKey(tvId)) return IMDB.get(tvId); }
+        String id = null;
+        try {
+            String v = get("/tv/" + tvId + "/external_ids").optString("imdb_id", "");
+            if (v.startsWith("tt")) id = v;
+        } catch (Exception e) {
+            return null; // not cached: asked again next time
+        }
+        synchronized (IMDB) { IMDB.put(tvId, id); }
+        return id;
+    }
+
     /**
      * "EN - Breaking Bad (2008) [4K]" → name "Breaking Bad", year "2008". Only a provider's tag is
      * taken off the front ("EN - ", "UK: ", "NF | "), never part of a real title ("CSI: Miami",

@@ -45,51 +45,75 @@ final class Intros {
             Segments s = CACHE.get(k);
             if (s != null) { lastStatus = s.status; return s; }
         }
-        String url = "https://api.theintrodb.org/v4/media?tmdb_id=" + tmdbId + "&season=" + season + "&episode=" + episode
-                + (durationMs > 60_000 ? "&duration_ms=" + durationMs : "");
+        String what = "TMDB " + tmdbId + " S" + season + "E" + episode;
+        String base = "https://api.theintrodb.org/v4/media?tmdb_id=" + tmdbId + "&season=" + season + "&episode=" + episode;
         Segments s;
+        String source = "TheIntroDB";
+        boolean inTidb = true;
         try {
-            s = parse(new JSONObject(Http.string(url, "Mozilla/5.0 (YMPlayer)")));
+            s = parse(new JSONObject(Http.string(base + (durationMs > 60_000 ? "&duration_ms=" + durationMs : ""), UA)));
         } catch (java.io.IOException e) {
             String m = e.getMessage() == null ? "" : e.getMessage();
-            if (m.contains("404")) {
-                s = none("Not in TheIntroDB (TMDB " + tmdbId + " S" + season + "E" + episode + ")");
-            } else {
-                return none("Couldn't reach TheIntroDB: " + m); // offline: asked again next time
-            }
+            if (!m.contains("404")) return none("Couldn't reach TheIntroDB: " + m); // offline: asked again next time
+            s = new Segments();
+            inTidb = false;
         } catch (Exception e) {
-            return none("TheIntroDB answered in an unexpected way");
+            s = new Segments();
         }
         // Nothing for the intro or recap in this cut (the episode's length picks one): the intro is
         // usually at the same place in every cut, so take it from the episode as a whole
-        boolean otherCut = false;
-        if (s.status.isEmpty() && !s.hasIntro() && !s.hasRecap() && durationMs > 60_000) {
+        if (inTidb && !s.hasIntro() && !s.hasRecap() && durationMs > 60_000) {
             try {
-                Segments any = parse(new JSONObject(Http.string(
-                        "https://api.theintrodb.org/v4/media?tmdb_id=" + tmdbId + "&season=" + season + "&episode=" + episode,
-                        "Mozilla/5.0 (YMPlayer)")));
-                if (any.hasIntro() || any.hasRecap()) {
-                    s.introStart = any.introStart; s.introEnd = any.introEnd;
-                    s.recapStart = any.recapStart; s.recapEnd = any.recapEnd;
-                    if (s.creditsStart <= 0) s.creditsStart = any.creditsStart;
-                    otherCut = true;
-                }
+                Segments any = parse(new JSONObject(Http.string(base, UA)));
+                if (takeIntro(s, any)) source = "TheIntroDB, another cut";
             } catch (Exception ignored) {
             }
         }
-        if (s.status.isEmpty()) {
-            StringBuilder b = new StringBuilder("TMDB " + tmdbId + " S" + season + "E" + episode + ": ");
-            if (s.hasRecap()) b.append("recap ").append(clock(s.recapStart)).append("–").append(clock(s.recapEnd)).append("  ");
-            if (s.hasIntro()) b.append("intro ").append(clock(s.introStart)).append("–").append(clock(s.introEnd)).append("  ");
-            if (s.creditsStart > 0) b.append("credits ").append(clock(s.creditsStart));
-            if (!s.hasIntro() && !s.hasRecap() && s.creditsStart <= 0) b.append("no times yet");
-            else if (!s.hasIntro() && !s.hasRecap()) b.append("  ·  no intro or recap times in TheIntroDB yet");
-            if (otherCut) b.append("  (intro from another cut)");
-            s.status = b.toString().trim();
+        // Still nothing: the other free databases, which go by the IMDb id
+        if (!s.hasIntro() && !s.hasRecap()) {
+            String imdb = Tmdb.imdbId(tmdbId);
+            if (imdb != null) {
+                String q = "?imdb_id=" + imdb + "&season=" + season + "&episode=" + episode;
+                try { // SkipDB (skipdb.tv)
+                    JSONObject o = new JSONObject(Http.string("https://api.skipdb.tv/api/segments" + q
+                            + (durationMs > 60_000 ? "&duration=" + durationMs / 1000 : ""), UA));
+                    if (takeIntro(s, parse(o.optJSONObject("segments") != null ? o.optJSONObject("segments") : o))) source = "SkipDB";
+                } catch (Exception ignored) {
+                }
+                if (!s.hasIntro() && !s.hasRecap()) {
+                    try { // IntroDB (introdb.app)
+                        JSONObject o = new JSONObject(Http.string("https://api.introdb.app/segments" + q, UA));
+                        if (takeIntro(s, parse(o.optJSONObject("segments") != null ? o.optJSONObject("segments") : o))) source = "IntroDB";
+                    } catch (Exception ignored) {
+                    }
+                }
+            }
         }
+        StringBuilder b = new StringBuilder(what + ": ");
+        if (s.hasRecap()) b.append("recap ").append(clock(s.recapStart)).append("–").append(clock(s.recapEnd)).append("  ");
+        if (s.hasIntro()) b.append("intro ").append(clock(s.introStart)).append("–").append(clock(s.introEnd)).append("  ");
+        if (s.creditsStart > 0) b.append("credits ").append(clock(s.creditsStart)).append("  ");
+        if (s.hasIntro() || s.hasRecap()) b.append("(").append(source).append(")");
+        else if (s.creditsStart > 0) b.append("·  no intro or recap times in TheIntroDB, SkipDB or IntroDB yet");
+        else b.append(inTidb ? "no times yet" : "not in TheIntroDB, SkipDB or IntroDB");
+        s.status = b.toString().trim();
         lastStatus = s.status;
         synchronized (CACHE) { CACHE.put(k, s); }
         return s;
+    }
+
+    private static final String UA = "Mozilla/5.0 (YMPlayer)";
+
+    /** Copies the intro and recap from `from` (and the credits if there were none). @return true if it had any. */
+    private static boolean takeIntro(Segments to, Segments from) {
+        if (!from.hasIntro() && !from.hasRecap()) {
+            if (to.creditsStart <= 0 && from.creditsStart > 0) to.creditsStart = from.creditsStart;
+            return false;
+        }
+        to.introStart = from.introStart; to.introEnd = from.introEnd;
+        to.recapStart = from.recapStart; to.recapEnd = from.recapEnd;
+        if (to.creditsStart <= 0) to.creditsStart = from.creditsStart;
+        return true;
     }
 
     static Segments parse(JSONObject o) {
@@ -100,6 +124,7 @@ final class Intros {
         long[] recap = longest(o.opt("recap"));
         if (recap != null) { s.recapStart = recap[0]; s.recapEnd = recap[1]; }
         long[] credits = longest(o.opt("credits"));
+        if (credits == null) credits = longest(o.opt("outro")); // SkipDB / IntroDB call them outro
         if (credits != null && credits[0] > 0) s.creditsStart = credits[0];
         return s;
     }
@@ -119,6 +144,11 @@ final class Intros {
             if (o == null) continue;
             long start = num(o, "start_ms", "startMs");
             long end = num(o, "end_ms", "endMs");
+            if (start < 0 && end < 0) { // IntroDB gives seconds
+                double sa = o.optDouble("start_sec", o.optDouble("start", Double.NaN)), sz = o.optDouble("end_sec", o.optDouble("end", Double.NaN));
+                start = Double.isNaN(sa) ? -1 : (long) (sa * 1000);
+                end = Double.isNaN(sz) ? -1 : (long) (sz * 1000);
+            }
             if (start <= 0 && end <= 0) continue; // {0,0} / {null,null}: confirmed there isn't one
             if (start < 0) start = 0;
             if (best == null || (end > 0 && best[1] > 0 && end - start > best[1] - best[0])) best = new long[]{start, end};
