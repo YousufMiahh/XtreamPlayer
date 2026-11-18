@@ -32,6 +32,8 @@ public class SearchActivity extends Activity implements TopBar.Reselect {
     private Prefs prefs;
     private XtreamApi api;
     private EditText box;
+    private KeyPad keys;
+    private int gridWidth;
     private final LinearLayout[] slots = new LinearLayout[3];
     private TextView status;
     private final boolean[] ready = new boolean[3];
@@ -51,31 +53,50 @@ public class SearchActivity extends Activity implements TopBar.Reselect {
         prefs = new Prefs(this);
         api = new XtreamApi(prefs);
 
-        ScrollView scroll = new ScrollView(this);
+        // Netflix-style: the search box and its own keyboard on the left, results on the right
+        LinearLayout page = new LinearLayout(this);
+        page.setOrientation(LinearLayout.VERTICAL);
+        page.setClipChildren(false);
         Ambient.install(this, Ambient.SEARCH);
+        page.addView(TopBar.build(this, TopBar.SEARCH));
+        LinearLayout body = new LinearLayout(this);
+        body.setClipChildren(false);
+        page.addView(body, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
+
+        int leftW = Ui.dp(this, 360);
+        LinearLayout left = new LinearLayout(this);
+        left.setOrientation(LinearLayout.VERTICAL);
+        left.setClipChildren(false);
+        left.setClipToPadding(false);
+        left.setPadding(Ui.dp(this, 56), Ui.dp(this, 18), 0, Ui.dp(this, 24));
+        body.addView(left, new LinearLayout.LayoutParams(leftW, ViewGroup.LayoutParams.MATCH_PARENT));
+
+        box = Ui.input(this, "Search", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+        box.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, Ui.sp(this, 22));
+        box.setSingleLine(true);
+        LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        blp.bottomMargin = Ui.dp(this, 14);
+        left.addView(box, blp);
+        keys = new KeyPad(this, box);
+        left.addView(keys, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        gridWidth = getResources().getDisplayMetrics().widthPixels - leftW - Ui.dp(this, 128);
+
+        ScrollView scroll = new ScrollView(this);
         scroll.setVerticalScrollBarEnabled(false);
         scroll.setClipChildren(false);
         LinearLayout col = new LinearLayout(this);
         col.setOrientation(LinearLayout.VERTICAL);
         col.setClipChildren(false);
         col.setPadding(0, 0, 0, Ui.dp(this, 48));
-        col.addView(TopBar.build(this, TopBar.SEARCH));
-
-        box = Ui.input(this, "Channels, movies and series", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
-        box.setImeOptions(EditorInfo.IME_ACTION_SEARCH);
-        box.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, Ui.sp(this, 24));
-        box.setGravity(Gravity.CENTER);
-        LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(Ui.dp(this, 820), ViewGroup.LayoutParams.WRAP_CONTENT);
-        blp.gravity = Gravity.CENTER_HORIZONTAL;
-        blp.topMargin = Ui.dp(this, 28);
-        col.addView(box, blp);
+        scroll.addView(col);
+        body.addView(scroll, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1));
 
         // All | Live TV | Movies | Series
         final LinearLayout chipRow = new LinearLayout(this);
-        chipRow.setGravity(Gravity.CENTER_HORIZONTAL);
+        chipRow.setGravity(Gravity.START);
         chipRow.setClipChildren(false);
         chipRow.setClipToPadding(false);
-        chipRow.setPadding(0, Ui.dp(this, 20), 0, Ui.dp(this, 4));
+        chipRow.setPadding(Ui.dp(this, 58), Ui.dp(this, 18), 0, Ui.dp(this, 4));
         for (int i = 0; i < 4; i++) {
             final int f = i;
             chips[i] = Ui.medium(this, CHIP_NAMES[i], 18, Ui.TEXT);
@@ -96,7 +117,8 @@ public class SearchActivity extends Activity implements TopBar.Reselect {
         paintChips();
 
         status = Ui.text(this, "", 17, Ui.TEXT2);
-        status.setGravity(Gravity.CENTER);
+        status.setGravity(Gravity.START);
+        status.setPadding(Ui.dp(this, 64), 0, 0, 0);
         status.setPadding(0, Ui.dp(this, 18), 0, 0);
         col.addView(status, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
@@ -106,9 +128,8 @@ public class SearchActivity extends Activity implements TopBar.Reselect {
             slots[i].setClipChildren(false);
             col.addView(slots[i]);
         }
-        scroll.addView(col);
-        setContentView(scroll);
-        TopBar.animateIn(this, box, chipRow, status, slots[0], slots[1], slots[2]);
+        setContentView(page);
+        TopBar.animateIn(this, box, keys, chipRow, status, slots[0], slots[1], slots[2]);
 
         box.addTextChangedListener(new TextWatcher() {
             public void beforeTextChanged(CharSequence s, int a, int b, int c) {}
@@ -130,10 +151,10 @@ public class SearchActivity extends Activity implements TopBar.Reselect {
                 return true;
             }
         });
-        box.requestFocus();
+        keys.focusFirst();
         loadLibrary();
         Coach.show(this, "search", true,
-                new Coach.Step(box, "Search everything", "Type a channel, film or series. Spaces, dashes and accents don't matter, and the best matches come first."),
+                new Coach.Step(keys, "Search everything", "Type a channel, film or series with the keyboard. Spaces, dashes and accents don't matter, and the best matches come first. Hold OK on Delete to clear."),
                 new Coach.Step(chipRow, "Narrow it down", "Choose Live TV, Movies or Series to see only those, laid out across the whole screen."));
     }
 
@@ -264,7 +285,7 @@ public class SearchActivity extends Activity implements TopBar.Reselect {
                     Cards.OnMenu onMenu = new Cards.OnMenu() {
                         public void menu(Item it, View card) { Open.toggleFav(SearchActivity.this, prefs, it); }
                     };
-                    if (asGrid) slots[slot].addView(Cards.grid(SearchActivity.this, heading, hits, shape, prefs, onPick, onMenu));
+                    if (asGrid) slots[slot].addView(Cards.grid(SearchActivity.this, heading, hits, shape, prefs, onPick, onMenu, gridWidth));
                     else slots[slot].addView(Cards.shelf(SearchActivity.this, heading,
                             hits, shape, prefs,
                             new Cards.OnPick() {
@@ -274,7 +295,7 @@ public class SearchActivity extends Activity implements TopBar.Reselect {
                                 public void menu(Item it, View card) { Open.toggleFav(SearchActivity.this, prefs, it); }
                             }));
                 }
-                if (focusInside) box.requestFocus();
+                if (focusInside) keys.focusFirst();
                 updateStatus();
                 if (filter == 0 && !forceGrid) {
                     doneMask |= 1 << slot;
@@ -293,8 +314,10 @@ public class SearchActivity extends Activity implements TopBar.Reselect {
     @Override
     public void onBackPressed() {
         if (Coach.back(this)) return;
-        if (box.hasFocus()) { // Back while typing: close the keyboard and stay on Search
-            closeKeyboard();
+        View f = getCurrentFocus();
+        boolean onTab = f != null && f.getTag() instanceof String && ((String) f.getTag()).startsWith("tab:");
+        if (f != null && !onTab && keys.findFocus() != f) {
+            keys.focusFirst(); // Back from the results or the filters: to the keyboard again
             return;
         }
         TopBar.back(this);
@@ -328,13 +351,8 @@ public class SearchActivity extends Activity implements TopBar.Reselect {
         return null;
     }
 
-    /** OK on the Search tab: jump into the search box with the keyboard open. */
-    public void onTabReselected() {
-        box.requestFocus();
-        android.view.inputmethod.InputMethodManager imm =
-                (android.view.inputmethod.InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
-        if (imm != null) imm.showSoftInput(box, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT); // not "forced": Back can close it
-    }
+    /** OK on the Search tab: down onto the keyboard. */
+    public void onTabReselected() { keys.focusFirst(); }
 
     @Override
     protected void onDestroy() {

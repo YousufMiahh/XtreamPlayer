@@ -124,6 +124,12 @@ public final class Cards {
     /** A titled grid of cards that fills the width of the screen (search filtered to one type). */
     public static LinearLayout grid(final Context c, String title, final List<Item> items, final Shape shape,
                                     final Prefs prefs, final OnPick pick, final OnMenu menu) {
+        return grid(c, title, items, shape, prefs, pick, menu, c.getResources().getDisplayMetrics().widthPixels - Ui.dp(c, 128));
+    }
+
+    /** @param usable the width the cards can use (Search keeps its keyboard on the left) */
+    public static LinearLayout grid(final Context c, String title, final List<Item> items, final Shape shape,
+                                    final Prefs prefs, final OnPick pick, final OnMenu menu, int usable) {
         LinearLayout box = new LinearLayout(c);
         box.setOrientation(LinearLayout.VERTICAL);
         box.setClipChildren(false);
@@ -134,7 +140,6 @@ public final class Cards {
         box.addView(h);
         int cardW = shape == Shape.POSTER ? Ui.dp(c, 160) : shape == Shape.CHANNEL ? Ui.dp(c, 220) : Ui.dp(c, 300);
         int gap = Ui.dp(c, 32);
-        int usable = c.getResources().getDisplayMetrics().widthPixels - Ui.dp(c, 128);
         int cols = Math.max(1, (usable + gap) / (cardW + gap));
         LinearLayout row = null;
         for (int i = 0; i < items.size(); i++) {

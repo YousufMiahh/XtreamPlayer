@@ -45,6 +45,7 @@ public class BrowseActivity extends Activity implements TopBar.Reselect {
 
     // Search inside this section
     private android.widget.EditText searchBox;
+    private KeyPad searchKeys; // the on-screen keyboard beside the results while "Search" is open
     private List<Item> searchResults = new ArrayList<>();
     private int searchToken;
     private final Runnable pendingSearch = new Runnable() { public void run() { runSearch(); } };
@@ -218,7 +219,14 @@ public class BrowseActivity extends Activity implements TopBar.Reselect {
         spinner = new ProgressBar(this);
         spinner.setIndeterminateTintList(android.content.res.ColorStateList.valueOf(Ui.TEXT2));
         contentFrame.addView(spinner, new FrameLayout.LayoutParams(Ui.dp(this, 48), Ui.dp(this, 48), Gravity.CENTER));
-        mid.addView(contentFrame, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
+        LinearLayout searchRow = new LinearLayout(this);
+        searchRow.setClipChildren(false);
+        searchKeys = new KeyPad(this, searchBox);
+        searchKeys.setVisibility(View.GONE);
+        searchKeys.setPadding(0, Ui.dp(this, 10), Ui.dp(this, 24), 0);
+        searchRow.addView(searchKeys, new LinearLayout.LayoutParams(Ui.dp(this, 320), ViewGroup.LayoutParams.WRAP_CONTENT));
+        searchRow.addView(contentFrame, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1));
+        mid.addView(searchRow, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
         content.setId(View.generateViewId());
 
         midBox = mid;
@@ -550,19 +558,10 @@ public class BrowseActivity extends Activity implements TopBar.Reselect {
      * Fire TV keyboards ignore the first request).
      */
     private void openKeyboard() {
-        searchBox.requestFocus();
-        final android.view.inputmethod.InputMethodManager imm =
-                (android.view.inputmethod.InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
-        if (imm == null) return;
-        Runnable show = new Runnable() {
-            public void run() {
-                if (isFinishing() || searchBox.getVisibility() != View.VISIBLE) return;
-                if (!searchBox.hasFocus()) searchBox.requestFocus();
-                imm.showSoftInput(searchBox, 0);
-            }
-        };
-        searchBox.post(show);
-        searchBox.postDelayed(show, 250);
+        searchKeys.setVisibility(View.VISIBLE);
+        searchKeys.post(new Runnable() {
+            public void run() { if (!isFinishing() && searchKeys.getVisibility() == View.VISIBLE) searchKeys.focusFirst(); }
+        });
     }
 
     private void markPicked() {
@@ -662,6 +661,7 @@ public class BrowseActivity extends Activity implements TopBar.Reselect {
         final int token = ++loadToken;
         boolean searching = SEARCH.equals(cat.id);
         searchBox.setVisibility(searching ? View.VISIBLE : View.GONE);
+        searchKeys.setVisibility(searching ? View.VISIBLE : View.GONE);
         if (searching) {
             show(searchResults, false);
             if (focusContent) openKeyboard(); // OK or ▶ on "Search": straight into the box with the keyboard
@@ -856,7 +856,7 @@ public class BrowseActivity extends Activity implements TopBar.Reselect {
             setMode(MODE_LIST);
             return;
         }
-        if (searchBox.hasFocus()) { // close the keyboard and go back to the categories
+        if (searchKeys.hasFocus()) { // off the keyboard and back to the categories
             hideKeyboard();
             backToCategories();
             return;
