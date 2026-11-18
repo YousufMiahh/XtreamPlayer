@@ -115,7 +115,8 @@ public class SeriesActivity extends Activity {
         seasonRow = new LinearLayout(this);
         seasonRow.setOrientation(LinearLayout.HORIZONTAL);
         seasonRow.setClipChildren(false);
-        seasonRow.setPadding(Ui.dp(this, 76), Ui.dp(this, 26), Ui.dp(this, 64), Ui.dp(this, 4));
+        seasonRow.setClipToPadding(false);
+        seasonRow.setPadding(Ui.dp(this, 76), Ui.dp(this, 26), Ui.dp(this, 64), Ui.dp(this, 10)); // room for a highlighted pill
         seasonScroll.addView(seasonRow);
         page.addView(seasonScroll);
 
@@ -209,6 +210,8 @@ public class SeriesActivity extends Activity {
         }
         // Trailer and Favourite, small, on one line
         LinearLayout small = new LinearLayout(this);
+        small.setClipChildren(false); // a highlighted button grows a little: don't cut it off
+        small.setClipToPadding(false);
         small.setPadding(0, Ui.dp(this, 8), 0, 0);
         if (trailer != null) {
             Button tr = Ui.button(this, "▶  Trailer");
@@ -293,9 +296,17 @@ public class SeriesActivity extends Activity {
     }
 
     /** Episodes & More: the seasons and episodes come up, on the one you'd play. */
-    private void showRows() {
+    private void showRows() { showRows(false); }
+
+    /**
+     * Episodes & More: the seasons and episodes come up, on the episode you'd play (or, coming
+     * down from the buttons, on the first season). The big buttons and the plot make way for them.
+     */
+    private void showRows(boolean firstSeason) {
         if (seasons.isEmpty()) return;
         rowsShown = true;
+        buttons.setVisibility(View.GONE);
+        plot.setVisibility(View.GONE);
         Async.MAIN.removeCallbacks(startPreview);
         preview.stop();
         for (View v : new View[]{seasonScroll, episodeScroll}) {
@@ -303,6 +314,14 @@ public class SeriesActivity extends Activity {
             v.setTranslationY(Ui.dp(this, 40));
             v.setVisibility(View.VISIBLE);
             v.animate().alpha(1f).translationY(0).setDuration(Ui.ANIM_MS).setInterpolator(Ui.EASE).start();
+        }
+        if (firstSeason) {
+            final TextView pill = seasonPills.isEmpty() ? null : seasonPills.get(0);
+            if (pill != null) {
+                showSeason((Integer) pill.getTag());
+                seasonRow.post(new Runnable() { public void run() { seasonScroll.scrollTo(0, 0); pill.requestFocus(); } });
+            }
+            return;
         }
         Integer want = null;
         if (heroTarget != null) for (Map.Entry<Integer, List<Item>> e : seasons.entrySet()) if (e.getValue().contains(heroTarget)) want = e.getKey();
@@ -320,6 +339,8 @@ public class SeriesActivity extends Activity {
         rowsShown = false;
         seasonScroll.setVisibility(View.GONE);
         episodeScroll.setVisibility(View.GONE);
+        buttons.setVisibility(View.VISIBLE);
+        plot.setVisibility(View.VISIBLE);
         buildButtons();
         playBtn.requestFocus();
     }
@@ -624,6 +645,27 @@ public class SeriesActivity extends Activity {
             buildButtons();
             if (idx >= 0 && idx < episodeRow.getChildCount()) episodeRow.getChildAt(idx).requestFocus();
         }
+    }
+
+    @Override
+    public boolean dispatchKeyEvent(KeyEvent e) {
+        // ▼ off the bottom of the buttons: the seasons come up, on the first one
+        if (!rowsShown && e.getAction() == KeyEvent.ACTION_DOWN && e.getKeyCode() == KeyEvent.KEYCODE_DPAD_DOWN && !seasons.isEmpty()) {
+            View f = getCurrentFocus();
+            if (f != null && isInside(f, buttons)) {
+                View next = android.view.FocusFinder.getInstance().findNextFocus((ViewGroup) getWindow().getDecorView(), f, View.FOCUS_DOWN);
+                if (next == null || !isInside(next, buttons)) {
+                    showRows(true);
+                    return true;
+                }
+            }
+        }
+        return super.dispatchKeyEvent(e);
+    }
+
+    private static boolean isInside(View v, View parent) {
+        for (Object p = v; p instanceof View; p = ((View) p).getParent()) if (p == parent) return true;
+        return false;
     }
 
     @Override

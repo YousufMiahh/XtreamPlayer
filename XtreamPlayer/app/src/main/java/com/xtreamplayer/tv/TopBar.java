@@ -78,7 +78,7 @@ public final class TopBar {
         glide.pill = new View(a);
         glide.pill.setBackground(Ui.rounded(a, Ui.FOCUS_BG, 0, 22));
         glide.pill.setAlpha(0f);
-        glide.pill.setElevation(Ui.dp(a, 6));
+        glide.pill.setElevation(0); // a plain highlight, no shadow
         track.addView(glide.pill, new FrameLayout.LayoutParams(0, 0, Gravity.TOP | Gravity.START));
 
         final LinearLayout tabs = new TabRow(a, current);
@@ -95,11 +95,8 @@ public final class TopBar {
             boolean on = t[0].equals(current);
             tab.setTextColor(Ui.focusText(on ? Ui.TEXT : Ui.TEXT2));
             tab.setTypeface(on ? Ui.semibold() : Ui.medium());
-            // The current section keeps a soft pill; the focused one is shown by the gliding highlight.
-            android.graphics.drawable.StateListDrawable bg = new android.graphics.drawable.StateListDrawable();
-            bg.addState(new int[]{android.R.attr.state_focused}, new android.graphics.drawable.ColorDrawable(0));
-            bg.addState(new int[]{}, on ? Ui.rounded(a, Ui.SURFACE_HI, 0, 22) : new android.graphics.drawable.ColorDrawable(0));
-            tab.setBackground(bg);
+            // Only the gliding highlight: the current section is shown by its brighter, bolder name
+            tab.setBackground(new android.graphics.drawable.ColorDrawable(0));
             int px = Ui.dp(a, 22), py = Ui.dp(a, 11);
             tab.setPadding(px, py, px, py);
             tab.setFocusable(true);

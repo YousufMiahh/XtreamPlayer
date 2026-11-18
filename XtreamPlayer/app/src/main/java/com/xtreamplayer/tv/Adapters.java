@@ -122,6 +122,9 @@ public final class Adapters {
             if (logoBox.getParent() != null) ImageLoader.load(logo, icon, 144, 88);
         }
 
+        /** Whether the active row (the playing channel) keeps a soft background; categories don't. */
+        public boolean activeBg = true;
+
         public void setActive(boolean a) {
             if (a == active) return;
             active = a;
@@ -149,7 +152,7 @@ public final class Adapters {
             Context c = getContext();
             if (hot && !glide) setBackground(Ui.rounded(c, Ui.FOCUS_BG, 0, 12));
             else if (hot) setBackground(null);
-            else if (active) setBackground(Ui.rounded(c, Ui.SURFACE_HI, 0, 12));
+            else if (active && activeBg) setBackground(Ui.rounded(c, Ui.SURFACE_HI, 0, 12));
             else setBackground(null);
             title.setTextColor(hot ? Ui.ON_FOCUS : Ui.TEXT);
             title.setTypeface(hot || active ? Ui.semibold() : Ui.medium());
@@ -256,6 +259,7 @@ public final class Adapters {
         public View getView(int pos, View v, ViewGroup parent) {
             RowCell cell = v instanceof RowCell ? (RowCell) v : new RowCell(ctx, false, false);
             cell.glide = hasGlider(list);
+            cell.activeBg = false; // just the highlight while you move; the open category is shown in bold
             Item it = getItem(pos);
             cell.bind(null, null, it.name, it.info, it.num);
             cell.setActive(!hideActive && pos == active);

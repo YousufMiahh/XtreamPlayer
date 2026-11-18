@@ -34,8 +34,9 @@ import java.util.Locale;
  */
 public class PlayerActivity extends Activity implements Engine.Listener, PlayerTop.Listener {
     static final long BACK_MS = 5000, FORWARD_MS = 10000;
-    static final String VOD_HINT = "◀  5 sec      ▶  10 sec      OK  Play / Pause      ▲  More      ▼  Scrub      "
+    static final String VOD_HINT = "◀  5 sec      ▶  10 sec      OK  Play / Pause      ▲  More      ▼  Settings      "
             + (Ui.hasMenuKey() ? "☰" : "Hold OK") + "  Subtitles & Audio";
+    static final String SETTINGS_HINT = "OK  Subtitles & Audio      ▲  Scrub along the bar      Back  Hide";
     static final String SCRUB_HINT = "◀ ▶  Move (hold to go faster)      OK  Play from here      Back  Cancel";
     static final float[] SUB_SIZES = {0.045f, 0.056f, 0.068f, 0.085f};
     static final String[] SUB_COLOR_NAMES = {"White", "Yellow", "Cyan", "Green", "Pink", "Orange"};
@@ -63,6 +64,11 @@ public class PlayerActivity extends Activity implements Engine.Listener, PlayerT
     private FrameLayout scrubRow;
     private LinearLayout scrubCard;
     private TextView scrubTime, vodHint;
+    // ▼ while a film or episode plays: the settings button under the bar (Netflix-style)
+    private FrameLayout settingsCircle;
+    private Icon settingsIcon;
+    private TextView settingsLabel;
+    private boolean settingsFocused;
     private boolean scrubbing;
     private long scrubPos;
     private final Runnable scrubCommit = new Runnable() { public void run() { commitScrub(); } };
@@ -95,7 +101,11 @@ public class PlayerActivity extends Activity implements Engine.Listener, PlayerT
     private int lastRendered = -1, stallTicks, recoveries;
 
     private final Runnable hideOverlay = new Runnable() {
-        public void run() { if (top == null || !top.focused()) fade(vodOverlay, false); } // not while you're on the top row
+        public void run() {
+            if (top != null && top.focused()) return; // not while you're on the top row
+            setSettingsFocus(false);
+            fade(vodOverlay, false);
+        }
     };
     private final Runnable hideBanner = new Runnable() { public void run() { fade(liveBanner, false); } };
     private final Runnable endBurst = new Runnable() {
@@ -239,6 +249,24 @@ public class PlayerActivity extends Activity implements Engine.Listener, PlayerT
         times.addView(timeLeft, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
         times.addView(timeRight, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
         vodOverlay.addView(times);
+
+        LinearLayout controls = new LinearLayout(this);
+        controls.setGravity(Gravity.CENTER_VERTICAL);
+        controls.setClipChildren(false);
+        controls.setPadding(0, Ui.dp(this, 14), 0, 0);
+        settingsCircle = new FrameLayout(this);
+        settingsIcon = new Icon(this, Icon.Kind.SETTINGS, Ui.W1);
+        int ip = Ui.dp(this, 12);
+        settingsIcon.setPadding(ip, ip, ip, ip);
+        settingsCircle.addView(settingsIcon, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        controls.addView(settingsCircle, new LinearLayout.LayoutParams(Ui.dp(this, 52), Ui.dp(this, 52)));
+        settingsLabel = Ui.medium(this, "SUBTITLES & AUDIO", 15, Ui.W1);
+        settingsLabel.setTypeface(Ui.semibold());
+        settingsLabel.setLetterSpacing(0.04f);
+        settingsLabel.setPadding(Ui.dp(this, 14), 0, 0, 0);
+        settingsLabel.setVisibility(View.INVISIBLE);
+        controls.addView(settingsLabel);
+        vodOverlay.addView(controls);
 
         vodHint = Ui.text(this, VOD_HINT, 14, Ui.W3);
         vodHint.setGravity(Gravity.CENTER);
@@ -1239,6 +1267,33 @@ public class PlayerActivity extends Activity implements Engine.Listener, PlayerT
             }
         }
 
+        // The settings button under the bar: OK opens Subtitles & Audio, ▲ goes up onto the bar
+        // (scrubbing), Back puts the controls away
+        if (engine != null && !isLive() && settingsFocused && !panelOpen() && !scrubbing) {
+            boolean nav = okKey || k == KeyEvent.KEYCODE_DPAD_UP || k == KeyEvent.KEYCODE_DPAD_DOWN
+                    || k == KeyEvent.KEYCODE_DPAD_LEFT || k == KeyEvent.KEYCODE_DPAD_RIGHT || k == KeyEvent.KEYCODE_BACK;
+            if (nav) {
+                if (e.getAction() == KeyEvent.ACTION_DOWN) {
+                    if (e.getRepeatCount() > 0) return true;
+                    if (k == KeyEvent.KEYCODE_DPAD_UP) {
+                        setSettingsFocus(false);
+                        enterScrub();
+                    } else if (k == KeyEvent.KEYCODE_BACK) {
+                        setSettingsFocus(false);
+                        Async.MAIN.removeCallbacks(hideOverlay);
+                        fade(vodOverlay, false);
+                    } else {
+                        showOverlay(true); // still here: keep the controls up a while longer
+                    }
+                } else if (e.getAction() == KeyEvent.ACTION_UP && okKey) {
+                    setSettingsFocus(false);
+                    openTracks();
+                }
+                return true;
+            }
+            setSettingsFocus(false); // any other key: carry on as usual
+        }
+
         // Films & series: OK pauses when released; held, it opens the menu (remotes without ☰)
         if (engine != null && okKey && !isLive() && !panelOpen() && errorText.getVisibility() != View.VISIBLE) {
             if (e.getAction() == KeyEvent.ACTION_DOWN) {
@@ -1354,7 +1409,11 @@ public class PlayerActivity extends Activity implements Engine.Listener, PlayerT
                 case KeyEvent.KEYCODE_DPAD_UP:
                     cancelScrub();
                     return true;
-                case KeyEvent.KEYCODE_DPAD_DOWN:
+                case KeyEvent.KEYCODE_DPAD_DOWN: // down off the bar: the settings button
+                    if (e.getRepeatCount() == 0) {
+                        cancelScrub();
+                        focusSettings();
+                    }
                     return true;
                 case KeyEvent.KEYCODE_MENU:
                     cancelScrub();
@@ -1397,7 +1456,7 @@ public class PlayerActivity extends Activity implements Engine.Listener, PlayerT
                 }
                 return true;
             case KeyEvent.KEYCODE_DPAD_DOWN:
-                if (e.getRepeatCount() == 0) enterScrub();
+                if (e.getRepeatCount() == 0) focusSettings();
                 return true;
             case KeyEvent.KEYCODE_MENU:
                 openTracks();
@@ -1478,6 +1537,24 @@ public class PlayerActivity extends Activity implements Engine.Listener, PlayerT
     private void cancelScrub() {
         if (!scrubbing) return;
         exitScrub();
+        showOverlay(true);
+    }
+
+    /** The settings button under the bar: white circle with its name beside it while it's chosen. */
+    private void setSettingsFocus(boolean on) {
+        if (settingsCircle == null || on == settingsFocused) return;
+        settingsFocused = on;
+        settingsCircle.setBackground(on ? Ui.rounded(this, 0xFFFFFFFF, 0, 26) : null);
+        settingsIcon.setColor(on ? 0xFF0B0B0F : Ui.W1);
+        settingsCircle.animate().scaleX(on ? 1.1f : 1f).scaleY(on ? 1.1f : 1f).setDuration(Ui.ANIM_MS).setInterpolator(Ui.EASE).start();
+        settingsLabel.setVisibility(on ? View.VISIBLE : View.INVISIBLE);
+        if (!scrubbing) vodHint.setText(on ? SETTINGS_HINT : VOD_HINT);
+    }
+
+    /** ▼ while playing: the overlay comes up with the settings button chosen. */
+    private void focusSettings() {
+        if (top != null && top.focused()) top.leave();
+        setSettingsFocus(true);
         showOverlay(true);
     }
 

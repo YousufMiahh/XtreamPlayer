@@ -78,8 +78,7 @@ final class PlayerTop extends FrameLayout {
         shown.add(BACK);
         shown.add(RESTART);
         if (hasNext) shown.add(NEXT);
-        if (isEpisode) shown.add(EPISODES);
-        shown.add(SETTINGS);
+        if (isEpisode) shown.add(EPISODES); // Settings is under the bar now (▼), as on Netflix
         row.removeAllViews();
         circles.clear();
         icons.clear();
