@@ -20,6 +20,18 @@ final class KeyPad extends LinearLayout {
 
     private final EditText box;
     private TextView first;
+    private Runnable onLeftEdge;
+
+    /** ◀ off the left of the keyboard (the screen can go back to its categories). */
+    void setOnLeftEdge(Runnable r) { onLeftEdge = r; }
+
+    private final OnKeyListener leftEdge = new OnKeyListener() {
+        public boolean onKey(View v, int code, KeyEvent e) {
+            if (code != KeyEvent.KEYCODE_DPAD_LEFT || onLeftEdge == null) return false;
+            if (e.getAction() == KeyEvent.ACTION_DOWN) onLeftEdge.run();
+            return true;
+        }
+    };
 
     KeyPad(Context c, EditText target) {
         super(c);
@@ -35,7 +47,9 @@ final class KeyPad extends LinearLayout {
 
         int gap = Ui.dp(c, 6);
         LinearLayout top = row(c);
-        top.addView(key(c, "Space", 17, " "), weighted(3, gap));
+        TextView space = key(c, "Space", 17, " ");
+        space.setOnKeyListener(leftEdge);
+        top.addView(space, weighted(3, gap));
         TextView del = key(c, "Delete", 17, null);
         del.setOnClickListener(new OnClickListener() { public void onClick(View v) { backspace(); } });
         del.setOnLongClickListener(new OnLongClickListener() {
@@ -58,6 +72,7 @@ final class KeyPad extends LinearLayout {
             String ch = String.valueOf(KEYS.charAt(i));
             TextView k = key(c, ch, 22, ch);
             if (i == 0) first = k;
+            if (i % COLS == 0) k.setOnKeyListener(leftEdge);
             r.addView(k, weighted(1, gap));
         }
     }

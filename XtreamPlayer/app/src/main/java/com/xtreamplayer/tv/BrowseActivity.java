@@ -45,7 +45,9 @@ public class BrowseActivity extends Activity implements TopBar.Reselect {
 
     // Search inside this section
     private android.widget.EditText searchBox;
-    private KeyPad searchKeys; // the on-screen keyboard beside the results while "Search" is open
+    private KeyPad searchKeys; // the on-screen keyboard, over the categories while "Search" is open
+    private FrameLayout catStack;
+    private View catWrap;
     private List<Item> searchResults = new ArrayList<>();
     private int searchToken;
     private final Runnable pendingSearch = new Runnable() { public void run() { runSearch(); } };
@@ -146,7 +148,13 @@ public class BrowseActivity extends Activity implements TopBar.Reselect {
                 v.setClipBounds(new android.graphics.Rect(-spill, -spill, (r - l) + spill, b - t));
             }
         });
-        catCol.addView(catWrap, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
+        // The search keyboard goes over the category list while you type (Netflix keeps it at the
+        // left), so the results keep their full width
+        catStack = new FrameLayout(this);
+        catStack.setClipChildren(false);
+        catStack.addView(catWrap, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        this.catWrap = catWrap;
+        catCol.addView(catStack, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
         catHint = Ui.text(this, Ui.hasMenuKey() ? "Hold OK  ♥ Favourite      ☰  Rename / Hide" : "Hold OK  Favourite, rename or hide", 14, Ui.TEXT2);
         catHint.setGravity(Gravity.CENTER);
         catHint.setAlpha(0f);
@@ -219,14 +227,12 @@ public class BrowseActivity extends Activity implements TopBar.Reselect {
         spinner = new ProgressBar(this);
         spinner.setIndeterminateTintList(android.content.res.ColorStateList.valueOf(Ui.TEXT2));
         contentFrame.addView(spinner, new FrameLayout.LayoutParams(Ui.dp(this, 48), Ui.dp(this, 48), Gravity.CENTER));
-        LinearLayout searchRow = new LinearLayout(this);
-        searchRow.setClipChildren(false);
+        mid.addView(contentFrame, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
         searchKeys = new KeyPad(this, searchBox);
         searchKeys.setVisibility(View.GONE);
-        searchKeys.setPadding(0, Ui.dp(this, 10), Ui.dp(this, 24), 0);
-        searchRow.addView(searchKeys, new LinearLayout.LayoutParams(Ui.dp(this, 320), ViewGroup.LayoutParams.WRAP_CONTENT));
-        searchRow.addView(contentFrame, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1));
-        mid.addView(searchRow, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
+        searchKeys.setPadding(Ui.dp(this, 4), Ui.dp(this, 10), Ui.dp(this, 4), 0);
+        searchKeys.setOnLeftEdge(new Runnable() { public void run() { backToCategories(); } });
+        catStack.addView(searchKeys, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         content.setId(View.generateViewId());
 
         midBox = mid;
@@ -557,8 +563,15 @@ public class BrowseActivity extends Activity implements TopBar.Reselect {
      * so the keyboard is asked for once it's laid out (and once more shortly after, as some
      * Fire TV keyboards ignore the first request).
      */
+    /** The keyboard over the categories (on), or the categories again (off). */
+    private void showKeys(boolean on) {
+        searchKeys.setVisibility(on ? View.VISIBLE : View.GONE);
+        catWrap.setVisibility(on ? View.INVISIBLE : View.VISIBLE);
+        catHint.setVisibility(on ? View.INVISIBLE : View.VISIBLE);
+    }
+
     private void openKeyboard() {
-        searchKeys.setVisibility(View.VISIBLE);
+        showKeys(true);
         searchKeys.post(new Runnable() {
             public void run() { if (!isFinishing() && searchKeys.getVisibility() == View.VISIBLE) searchKeys.focusFirst(); }
         });
@@ -661,7 +674,7 @@ public class BrowseActivity extends Activity implements TopBar.Reselect {
         final int token = ++loadToken;
         boolean searching = SEARCH.equals(cat.id);
         searchBox.setVisibility(searching ? View.VISIBLE : View.GONE);
-        searchKeys.setVisibility(searching ? View.VISIBLE : View.GONE);
+        if (!searching) showKeys(false);
         if (searching) {
             show(searchResults, false);
             if (focusContent) openKeyboard(); // OK or ▶ on "Search": straight into the box with the keyboard
@@ -922,6 +935,7 @@ public class BrowseActivity extends Activity implements TopBar.Reselect {
     }
 
     private void backToCategories() {
+        if (searchKeys != null && searchKeys.getVisibility() == View.VISIBLE) showKeys(false);
         int a = catAdapter.active;
         if (a >= 0 && a < catAdapter.getCount()) {
             // Select the current category exactly where it sits on screen (setSelection alone
