@@ -16,7 +16,7 @@ import java.io.InputStream;
 
 /** A brief branded screen on launch, then on to the app. */
 public class SplashActivity extends Activity {
-    private static final long SHOW_MS = 1400, MAX_WAIT_MS = 6000;
+    private static final long SHOW_MS = 2300, MAX_WAIT_MS = 6000; // the logo intro, then on
     private boolean left, shownLongEnough, libraryReady;
 
     private final Runnable next = new Runnable() {
@@ -37,18 +37,16 @@ public class SplashActivity extends Activity {
         Ambient.install(this, Ambient.HOME);
 
         FrameLayout root = new FrameLayout(this);
+        root.setClipChildren(false);
         LinearLayout col = new LinearLayout(this);
         col.setOrientation(LinearLayout.VERTICAL);
         col.setGravity(Gravity.CENTER_HORIZONTAL);
+        col.setClipChildren(false);
+        col.setClipToPadding(false);
         root.addView(col, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER));
 
-        ImageView logo = new ImageView(this);
-        try (InputStream in = getAssets().open("logo.png")) {
-            logo.setImageBitmap(BitmapFactory.decodeStream(in));
-        } catch (Exception ignored) {
-        }
-        logo.setElevation(Ui.dp(this, 18));
         int s = Ui.dp(this, 190);
+        final LogoIntro logo = new LogoIntro(this, s); // the Y flies in from the left, the M from the right
         col.addView(logo, new LinearLayout.LayoutParams(s, s));
 
         TextView name = Ui.title(this, "YM Player", 40);
@@ -61,16 +59,21 @@ public class SplashActivity extends Activity {
 
         setContentView(root);
 
-        DecelerateInterpolator ease = new DecelerateInterpolator(2f);
-        logo.setAlpha(0f);
-        logo.setScaleX(0.86f);
-        logo.setScaleY(0.86f);
-        logo.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(520).setInterpolator(ease).start();
+        final DecelerateInterpolator ease = new DecelerateInterpolator(2f);
         name.setAlpha(0f);
         name.setTranslationY(Ui.dp(this, 14));
-        name.animate().alpha(1f).translationY(0f).setStartDelay(180).setDuration(450).setInterpolator(ease).start();
         by.setAlpha(0f);
-        by.animate().alpha(1f).setStartDelay(380).setDuration(450).start();
+        final TextView nameF = name, byF = by;
+        logo.post(new Runnable() {
+            public void run() {
+                logo.play(new Runnable() {
+                    public void run() {
+                        nameF.animate().alpha(1f).translationY(0f).setDuration(500).setInterpolator(ease).start();
+                        byF.animate().alpha(1f).setStartDelay(250).setDuration(450).start();
+                    }
+                });
+            }
+        });
 
         // While the logo shows, load Live TV (and every section's categories) from the copy
         // saved on the device, so the first tap on Live TV is instant.
