@@ -98,6 +98,12 @@ public class SettingsActivity extends Activity {
                 v.setText(PREVIEW[prefs.previewMode()]);
             }
         });
+        row("Film & Series Previews", prefs.homePreviews() == 1 ? "On" : "Off", new Action() {
+            public void run(TextView v) {
+                prefs.setHomePreviews(1 - prefs.homePreviews());
+                v.setText(prefs.homePreviews() == 1 ? "On" : "Off");
+            }
+        });
 
         section("Hide What You Don't Watch");
         row("Countries & Languages", FilterSettings.countriesLabel(prefs), new Action() {

@@ -32,8 +32,14 @@ public class SeriesActivity extends Activity {
     private ImageView backdrop;
     private TextView title, meta, plot, epLabel;
     private LinearLayout buttons, seasonRow, episodeRow;
-    private HorizontalScrollView episodeScroll;
-    private Button playBtn, favBtn;
+    private HorizontalScrollView episodeScroll, seasonScroll;
+    private View playBtn;
+    private Button favBtn;
+    private FrameLayout previewHost;
+    private Preview preview;
+    private boolean rowsShown, resumed;
+    private Item heroTarget;      // what Resume / Play would start
+    private long heroResumeMs;
     private String trailer;
     private final TreeMap<Integer, List<Item>> seasons = new TreeMap<>();
     private int activeSeason = Integer.MIN_VALUE;
@@ -58,6 +64,9 @@ public class SeriesActivity extends Activity {
         backdrop.setScaleType(ImageView.ScaleType.CENTER_CROP);
         backdrop.setAlpha(0f);
         root.addView(backdrop, match());
+        previewHost = new FrameLayout(this); // the muted preview plays here, under the artwork until it starts
+        root.addView(previewHost, 0, match());
+        preview = new Preview(this, prefs, api, previewHost, backdrop);
         View sl = new View(this);
         sl.setBackground(Ui.scrimLeft());
         root.addView(sl, match());
@@ -87,7 +96,7 @@ public class SeriesActivity extends Activity {
         epLabel.setPadding(0, 0, 0, Ui.dp(this, 6));
         plot = Ui.lines(Ui.text(this, series.plot == null ? "" : series.plot, 18, Ui.TEXT), 3);
         buttons = new LinearLayout(this);
-        buttons.setOrientation(LinearLayout.HORIZONTAL);
+        buttons.setOrientation(LinearLayout.VERTICAL); // Netflix: Resume / Play From Beginning / Episodes & More, stacked
         buttons.setClipChildren(false);
         buttons.setClipToPadding(false);
         buttons.setPadding(0, Ui.dp(this, 26), 0, 0);
@@ -99,7 +108,7 @@ public class SeriesActivity extends Activity {
         LinearLayout.LayoutParams ilp = new LinearLayout.LayoutParams(Ui.dp(this, 960), 0, 1);
         page.addView(info, ilp);
 
-        HorizontalScrollView seasonScroll = new HorizontalScrollView(this);
+        seasonScroll = new HorizontalScrollView(this);
         seasonScroll.setHorizontalScrollBarEnabled(false);
         seasonScroll.setClipChildren(false);
         seasonScroll.setClipToPadding(false);
@@ -121,6 +130,9 @@ public class SeriesActivity extends Activity {
         episodeRow.setPadding(Ui.dp(this, 80), Ui.dp(this, 20), Ui.dp(this, 64), Ui.dp(this, 16));
         episodeScroll.addView(episodeRow);
         page.addView(episodeScroll);
+        // The page opens on the big picture and the buttons; Episodes & More brings these up
+        seasonScroll.setVisibility(View.GONE);
+        episodeScroll.setVisibility(View.GONE);
 
         setContentView(root);
         loadBackdrop(series.icon);
@@ -149,28 +161,63 @@ public class SeriesActivity extends Activity {
 
     private void buildButtons() {
         boolean hadFocus = playBtn != null && playBtn.hasFocus();
+        View focused = getCurrentFocus();
+        int focusedAt = focused != null && focused.getParent() == buttons ? buttons.indexOfChild(focused) : -1;
         buttons.removeAllViews();
         final Item last = lastWatched();
-        String label = "▶  Play";
-        if (last != null) {
-            Item match = find(last.id);
-            label = "▶  " + (prefs.position(last) > 0 ? "Resume " : "Play ") + (match != null ? shortName(match) : "");
+        Item match = last != null ? find(last.id) : null;
+        Item first = seasons.isEmpty() ? null : firstEpisode();
+        // Netflix: carry on with the one you were on (or the next one, once it's finished)
+        Item target = match != null ? match : first;
+        if (match != null && prefs.isWatched(match)) {
+            Item nx = after(match);
+            if (nx != null) target = nx;
         }
-        playBtn = Ui.button(this, label.trim());
+        heroTarget = target;
+        long pos = target != null ? prefs.position(target) : 0, dur = target != null ? prefs.duration(target) : 0;
+        boolean resume = target != null && (pos > 0 || prefs.isUpNext(target) || (match != null && target != first));
+        heroResumeMs = pos;
+        String name = target == null ? "" : shortName(target).replace(" · E", resume ? ": Ep. " : ": E");
+        final Item go = target;
+        playBtn = Hero.button(this, resume ? "▶   Resume " + name : "▶   Play " + name,
+                resume && pos > 0 && dur > 0 ? pos / (float) dur : -1);
         playBtn.setOnClickListener(new View.OnClickListener() {
-            public void onClick(View v) {
-                Item target = last != null ? find(last.id) : null;
-                if (target == null && !seasons.isEmpty()) target = seasons.firstEntry().getValue().get(0);
-                if (target != null) playEpisode(target);
-            }
+            public void onClick(View v) { if (go != null) { preview.stop(); playEpisode(go); } }
         });
-        addButton(playBtn);
+        Hero.add(buttons, playBtn);
+        if (resume) {
+            View again = Hero.button(this, "↻   Play From Beginning", -1);
+            again.setOnClickListener(new View.OnClickListener() {
+                public void onClick(View v) {
+                    if (go == null) return;
+                    preview.stop();
+                    prefs.setPosition(go, 0);
+                    playEpisode(go);
+                }
+            });
+            Hero.add(buttons, again);
+        }
+        View more = Hero.button(this, "▤   Episodes & More", -1);
+        more.setOnClickListener(new View.OnClickListener() { public void onClick(View v) { showRows(); } });
+        Hero.add(buttons, more);
+        if (!resume) {
+            View as = Hero.button(this, "⌨   Audio & Subtitles", -1);
+            as.setOnClickListener(new View.OnClickListener() {
+                public void onClick(View v) { Hero.audioSubtitles(SeriesActivity.this, prefs); }
+            });
+            Hero.add(buttons, as);
+        }
+        // Trailer and Favourite, small, on one line
+        LinearLayout small = new LinearLayout(this);
+        small.setPadding(0, Ui.dp(this, 8), 0, 0);
         if (trailer != null) {
             Button tr = Ui.button(this, "▶  Trailer");
             tr.setOnClickListener(new View.OnClickListener() {
-                public void onClick(View v) { TrailerActivity.open(SeriesActivity.this, trailer); }
+                public void onClick(View v) { preview.stop(); TrailerActivity.open(SeriesActivity.this, trailer); }
             });
-            addButton(tr);
+            LinearLayout.LayoutParams tl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            tl.rightMargin = Ui.dp(this, 14);
+            small.addView(tr, tl);
         }
         favBtn = Ui.button(this, "");
         favBtn.setText(prefs.isFav(series) ? "♥  In Favourites" : "♡  Favourite");
@@ -180,8 +227,125 @@ public class SeriesActivity extends Activity {
                 favBtn.setText(prefs.isFav(series) ? "♥  In Favourites" : "♡  Favourite");
             }
         });
-        addButton(favBtn);
-        if (hadFocus || getCurrentFocus() == null) playBtn.requestFocus();
+        small.addView(favBtn);
+        buttons.addView(small);
+        // What's on the page: the episode you'd play and what it's about
+        if (target != null && !rowsShown) {
+            epLabel.setText(name + "   " + target.name);
+            epLabel.setVisibility(View.VISIBLE);
+            plot.setText(target.plot != null ? target.plot : (series.plot == null ? "" : series.plot));
+        }
+        View.OnFocusChangeListener previewOnFocus = new View.OnFocusChangeListener() {
+            public void onFocusChange(View v, boolean has) { if (has) schedulePreview(); }
+        };
+        for (int i = 0; i < buttons.getChildCount() - 1; i++) chainFocus(buttons.getChildAt(i), previewOnFocus);
+        if (!rowsShown) {
+            if (focusedAt >= 0 && focusedAt < buttons.getChildCount() - 1) buttons.getChildAt(focusedAt).requestFocus();
+            else if (hadFocus || getCurrentFocus() == null) playBtn.requestFocus();
+        }
+    }
+
+    private static void chainFocus(View v, final View.OnFocusChangeListener extra) {
+        final View.OnFocusChangeListener base = v.getOnFocusChangeListener();
+        v.setOnFocusChangeListener(new View.OnFocusChangeListener() {
+            public void onFocusChange(View x, boolean has) {
+                if (base != null) base.onFocusChange(x, has);
+                extra.onFocusChange(x, has);
+            }
+        });
+    }
+
+    private Item firstEpisode() {
+        for (Map.Entry<Integer, List<Item>> e : seasons.entrySet()) {
+            if (e.getKey() > 0 && !e.getValue().isEmpty()) return e.getValue().get(0);
+        }
+        return seasons.firstEntry().getValue().isEmpty() ? null : seasons.firstEntry().getValue().get(0);
+    }
+
+    /** The episode after this one (into the next season), or null. */
+    private Item after(Item ep) {
+        boolean next = false;
+        for (Map.Entry<Integer, List<Item>> e : seasons.entrySet()) {
+            if (e.getKey() == 0) continue;
+            for (Item x : e.getValue()) {
+                if (next) return x;
+                if (x == ep) next = true;
+            }
+        }
+        return null;
+    }
+
+    // ------------------------------------------------------------ preview & Episodes & More
+
+    private final Runnable startPreview = new Runnable() {
+        public void run() {
+            if (!resumed || rowsShown || heroTarget == null || heroResumeMs <= 0 || prefs.homePreviews() == 0) return;
+            View f = getCurrentFocus();
+            if (f == null || (f.getParent() != buttons && (f.getParent() == null || f.getParent().getParent() != buttons))) return;
+            preview.play(heroTarget, heroResumeMs);
+        }
+    };
+
+    /** Something you were watching: after a moment, it plays (muted) behind the page, from where you were. */
+    private void schedulePreview() {
+        Async.MAIN.removeCallbacks(startPreview);
+        if (heroTarget != null && heroResumeMs > 0) Async.MAIN.postDelayed(startPreview, 2000);
+    }
+
+    /** Episodes & More: the seasons and episodes come up, on the one you'd play. */
+    private void showRows() {
+        if (seasons.isEmpty()) return;
+        rowsShown = true;
+        Async.MAIN.removeCallbacks(startPreview);
+        preview.stop();
+        for (View v : new View[]{seasonScroll, episodeScroll}) {
+            v.setAlpha(0f);
+            v.setTranslationY(Ui.dp(this, 40));
+            v.setVisibility(View.VISIBLE);
+            v.animate().alpha(1f).translationY(0).setDuration(Ui.ANIM_MS).setInterpolator(Ui.EASE).start();
+        }
+        Integer want = null;
+        if (heroTarget != null) for (Map.Entry<Integer, List<Item>> e : seasons.entrySet()) if (e.getValue().contains(heroTarget)) want = e.getKey();
+        if (want != null && want != activeSeason) showSeason(want);
+        final int at = heroTarget == null ? -1 : seasons.get(activeSeason) == null ? -1 : seasons.get(activeSeason).indexOf(heroTarget);
+        episodeRow.post(new Runnable() {
+            public void run() {
+                View v = at >= 0 && at < episodeRow.getChildCount() ? episodeRow.getChildAt(at) : episodeRow.getChildAt(0);
+                if (v != null) v.requestFocus();
+            }
+        });
+    }
+
+    private void hideRows() {
+        rowsShown = false;
+        seasonScroll.setVisibility(View.GONE);
+        episodeScroll.setVisibility(View.GONE);
+        buildButtons();
+        playBtn.requestFocus();
+    }
+
+    @Override
+    public void onBackPressed() {
+        if (rowsShown) { // back to the big picture and the buttons, like Netflix
+            hideRows();
+            return;
+        }
+        super.onBackPressed();
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        resumed = false;
+        Async.MAIN.removeCallbacks(startPreview);
+        preview.stop();
+    }
+
+    @Override
+    protected void onDestroy() {
+        Async.MAIN.removeCallbacks(startPreview);
+        if (preview != null) preview.release();
+        super.onDestroy();
     }
 
     private void addButton(Button b) {
@@ -451,6 +615,7 @@ public class SeriesActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        resumed = true;
         if (!seasons.isEmpty()) {
             View f = getCurrentFocus();
             boolean inEpisodes = f != null && f.getParent() == episodeRow;

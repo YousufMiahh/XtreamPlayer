@@ -278,6 +278,9 @@ public class Prefs {
     /** 0 off, 1 on (muted), 2 on with sound. */
     public int previewMode() { return sp.getInt("preview", 2); } // on with sound unless changed in Settings
     public void setPreviewMode(int m) { sp.edit().putInt("preview", m).apply(); }
+    /** Film / series previews (Home cards and the page behind Resume): 1 on, 0 off. */
+    public int homePreviews() { return sp.getInt("home_previews", 1); }
+    public void setHomePreviews(int m) { sp.edit().putInt("home_previews", m).apply(); }
 
     /** Hours between automatic library refreshes: 0 = every launch, -1 = manual only. */
     public int refreshHours() { return sp.getInt("refresh_hours", 12); }

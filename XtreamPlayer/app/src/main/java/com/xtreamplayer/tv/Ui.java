@@ -249,7 +249,9 @@ public final class Ui {
 
     // ------------------------------------------------------------ focus motion
 
-    private static final DecelerateInterpolator EASE = new DecelerateInterpolator(1.6f);
+    /** Netflix-paced motion: a touch slower and softer than Android's defaults. */
+    public static final DecelerateInterpolator EASE = new DecelerateInterpolator(1.6f);
+    public static final int ANIM_MS = 320;
 
     /** Smoothly scale/raise a view when it gains focus, like tvOS cards. */
     public static void lift(final View v, final float scale) {

@@ -26,8 +26,11 @@ public class MovieActivity extends Activity {
     private ImageView backdrop;
     private TextView title, meta, plot, credits;
     private LinearLayout buttons;
-    private Button playBtn, favBtn;
+    private View playBtn;
+    private Button favBtn;
     private String trailer;
+    private Preview preview;
+    private boolean resumed;
 
     @Override
     protected void onCreate(Bundle b) {
@@ -48,6 +51,9 @@ public class MovieActivity extends Activity {
         backdrop.setScaleType(ImageView.ScaleType.CENTER_CROP);
         backdrop.setAlpha(0f);
         root.addView(backdrop, match());
+        FrameLayout previewHost = new FrameLayout(this); // the muted preview, under the artwork until it starts
+        root.addView(previewHost, 0, match());
+        preview = new Preview(this, prefs, api, previewHost, backdrop);
         View l = new View(this);
         l.setBackground(Ui.scrimLeft());
         root.addView(l, match());
@@ -77,10 +83,10 @@ public class MovieActivity extends Activity {
         col.addView(credits);
 
         buttons = new LinearLayout(this);
-        buttons.setOrientation(LinearLayout.HORIZONTAL);
+        buttons.setOrientation(LinearLayout.VERTICAL); // Netflix: Resume / Play From Beginning, stacked
         buttons.setClipChildren(false);
         buttons.setClipToPadding(false);
-        buttons.setPadding(0, Ui.dp(this, 36), 0, 0);
+        buttons.setPadding(0, Ui.dp(this, 30), 0, 0);
         col.addView(buttons);
 
         setContentView(root);
@@ -93,26 +99,45 @@ public class MovieActivity extends Activity {
     }
 
     private void buildButtons() {
+        // Keep focus on the same button when this is rebuilt
+        View f = getCurrentFocus();
+        int top = -1, sub = -1;
+        if (f != null && f.getParent() == buttons) top = buttons.indexOfChild(f);
+        else if (f != null && f.getParent() instanceof View && ((View) f.getParent()).getParent() == buttons) {
+            top = buttons.indexOfChild((View) f.getParent());
+            sub = ((ViewGroup) f.getParent()).indexOfChild(f);
+        }
         buttons.removeAllViews();
-        final long pos = prefs.position(movie);
-        playBtn = Ui.button(this, pos > 0 ? "▶  Resume  " + SeriesActivity.fmt(pos) : "▶  Play");
+        final long pos = prefs.position(movie), dur = prefs.duration(movie);
+        boolean resume = pos > 0;
+        playBtn = Hero.button(this, resume ? "▶   Resume" : "▶   Play", resume && dur > 0 ? pos / (float) dur : -1);
         playBtn.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) { play(false); }
         });
-        addButton(playBtn);
-        if (pos > 0) {
-            Button over = Ui.button(this, "↺  Start Over");
+        Hero.add(buttons, playBtn);
+        if (resume) {
+            View over = Hero.button(this, "↻   Play From Beginning", -1);
             over.setOnClickListener(new View.OnClickListener() {
                 public void onClick(View v) { play(true); }
             });
-            addButton(over);
+            Hero.add(buttons, over);
+        } else {
+            View as = Hero.button(this, "⌨   Audio & Subtitles", -1);
+            as.setOnClickListener(new View.OnClickListener() {
+                public void onClick(View v) { Hero.audioSubtitles(MovieActivity.this, prefs); }
+            });
+            Hero.add(buttons, as);
         }
+        LinearLayout small = new LinearLayout(this);
+        small.setClipChildren(false);
+        small.setClipToPadding(false);
+        small.setPadding(0, Ui.dp(this, 8), 0, 0);
         if (trailer != null) {
             Button tr = Ui.button(this, "▶  Trailer");
             tr.setOnClickListener(new View.OnClickListener() {
-                public void onClick(View v) { TrailerActivity.open(MovieActivity.this, trailer); }
+                public void onClick(View v) { preview.stop(); TrailerActivity.open(MovieActivity.this, trailer); }
             });
-            addButton(tr);
+            addButton(small, tr);
         }
         favBtn = Ui.button(this, "");
         updateFav();
@@ -122,7 +147,7 @@ public class MovieActivity extends Activity {
                 updateFav();
             }
         });
-        addButton(favBtn);
+        addButton(small, favBtn);
         final Button queueBtn = Ui.button(this, prefs.inQueue(movie) ? "✓  In Queue" : "＋  Queue");
         queueBtn.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
@@ -130,23 +155,60 @@ public class MovieActivity extends Activity {
                 queueBtn.setText(prefs.inQueue(movie) ? "✓  In Queue" : "＋  Queue");
             }
         });
-        addButton(queueBtn);
+        addButton(small, queueBtn);
         final Button watchedBtn = Ui.button(this, prefs.isWatched(movie) ? "✓  Watched" : "○  Mark Watched");
         watchedBtn.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
                 prefs.setWatched(movie, !prefs.isWatched(movie));
                 buildButtons();
-                buttons.getChildAt(buttons.getChildCount() - 1).requestFocus();
             }
         });
-        addButton(watchedBtn);
-        if (!buttons.hasFocus()) playBtn.requestFocus();
+        addButton(small, watchedBtn);
+        buttons.addView(small);
+        // Something you were part way through plays (muted) behind the page after a moment
+        View.OnFocusChangeListener later = new View.OnFocusChangeListener() {
+            public void onFocusChange(View v, boolean has) { if (has) schedulePreview(); }
+        };
+        for (int i = 0; i < buttons.getChildCount() - 1; i++) chain(buttons.getChildAt(i), later);
+        View want = null;
+        if (top >= 0 && top < buttons.getChildCount()) {
+            want = buttons.getChildAt(top);
+            if (sub >= 0 && want instanceof ViewGroup && sub < ((ViewGroup) want).getChildCount()) want = ((ViewGroup) want).getChildAt(sub);
+        }
+        if (want != null) want.requestFocus();
+        else if (!buttons.hasFocus()) playBtn.requestFocus();
+        if (!resume) preview.stop();
     }
 
-    private void addButton(Button b) {
+    private static void chain(View v, final View.OnFocusChangeListener extra) {
+        final View.OnFocusChangeListener base = v.getOnFocusChangeListener();
+        v.setOnFocusChangeListener(new View.OnFocusChangeListener() {
+            public void onFocusChange(View x, boolean has) {
+                if (base != null) base.onFocusChange(x, has);
+                extra.onFocusChange(x, has);
+            }
+        });
+    }
+
+    private void addButton(LinearLayout row, Button b) {
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        lp.rightMargin = Ui.dp(this, 18);
-        buttons.addView(b, lp);
+        lp.rightMargin = Ui.dp(this, 14);
+        row.addView(b, lp);
+    }
+
+    private final Runnable startPreview = new Runnable() {
+        public void run() {
+            long pos = prefs.position(movie);
+            if (!resumed || pos <= 0 || prefs.homePreviews() == 0) return;
+            View f = getCurrentFocus();
+            if (f == null || f.getParent() != buttons) return;
+            preview.play(movie, pos);
+        }
+    };
+
+    private void schedulePreview() {
+        Async.MAIN.removeCallbacks(startPreview);
+        if (prefs.position(movie) > 0) Async.MAIN.postDelayed(startPreview, 2000);
     }
 
     private void updateFav() {
@@ -154,6 +216,7 @@ public class MovieActivity extends Activity {
     }
 
     private void play(boolean fromStart) {
+        preview.stop();
         if (fromStart) prefs.setPosition(movie, 0);
         List<Item> q = new ArrayList<>();
         q.add(movie);
@@ -194,10 +257,7 @@ public class MovieActivity extends Activity {
                 String t = TrailerActivity.youtubeId(str(info, "youtube_trailer", str(info, "trailer", null)));
                 if (t != null && trailer == null) {
                     trailer = t;
-                    View f = getCurrentFocus();
-                    int idx = f != null && f.getParent() == buttons ? buttons.indexOfChild(f) : 0;
                     buildButtons();
-                    if (idx < buttons.getChildCount()) buttons.getChildAt(idx).requestFocus();
                 }
                 JSONObject data = r.optJSONObject("movie_data");
                 if (data != null && movie.ext == null) movie.ext = str(data, "container_extension", null);
@@ -229,6 +289,22 @@ public class MovieActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        resumed = true;
         if (buttons != null && buttons.getChildCount() > 0) buildButtons();
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        resumed = false;
+        Async.MAIN.removeCallbacks(startPreview);
+        if (preview != null) preview.stop();
+    }
+
+    @Override
+    protected void onDestroy() {
+        Async.MAIN.removeCallbacks(startPreview);
+        if (preview != null) preview.release();
+        super.onDestroy();
     }
 }
