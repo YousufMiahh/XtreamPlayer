@@ -1033,6 +1033,14 @@ public class PlayerActivity extends Activity implements Engine.Listener {
 
     /** Live TV: OK pressed and not yet released (tap opens channels, hold opens the menu). */
     private boolean okDown, okHeld;
+    /** Hold OK: the menu opens as soon as the hold is long enough, while OK is still down (not on release). */
+    private final Runnable okHold = new Runnable() {
+        public void run() {
+            if (!okDown || okHeld || scrubbing || panelOpen() || engine == null) return;
+            okHeld = true;
+            openTracks();
+        }
+    };
 
     @Override
     public boolean dispatchKeyEvent(KeyEvent e) {
@@ -1060,7 +1068,10 @@ public class PlayerActivity extends Activity implements Engine.Listener {
                 if (e.getRepeatCount() == 0) {
                     okDown = true;
                     okHeld = false;
+                    Async.MAIN.removeCallbacks(okHold);
+                    Async.MAIN.postDelayed(okHold, 450);
                 } else if (okDown && !okHeld && !scrubbing && e.getEventTime() - e.getDownTime() >= 450) {
+                    Async.MAIN.removeCallbacks(okHold);
                     okHeld = true;
                     openTracks();
                 }
@@ -1073,6 +1084,7 @@ public class PlayerActivity extends Activity implements Engine.Listener {
                     else togglePause();
                 }
                 okDown = okHeld = false;
+                Async.MAIN.removeCallbacks(okHold);
                 return true;
             }
         }
@@ -1081,7 +1093,10 @@ public class PlayerActivity extends Activity implements Engine.Listener {
                 if (e.getRepeatCount() == 0) {
                     okDown = true;
                     okHeld = false;
+                    Async.MAIN.removeCallbacks(okHold);
+                    Async.MAIN.postDelayed(okHold, 450);
                 } else if (okDown && !okHeld && e.getRepeatCount() >= 1 && e.getEventTime() - e.getDownTime() >= 450) {
+                    Async.MAIN.removeCallbacks(okHold);
                     okHeld = true;
                     openTracks(); // hold OK: favourite, subtitles & audio (for remotes without ☰)
                 }
@@ -1090,6 +1105,7 @@ public class PlayerActivity extends Activity implements Engine.Listener {
             if (e.getAction() == KeyEvent.ACTION_UP) {
                 if (okDown && !okHeld) openChannels();
                 okDown = okHeld = false;
+                Async.MAIN.removeCallbacks(okHold);
                 return true;
             }
         }

@@ -151,7 +151,10 @@ public class EpgGrid extends View {
                 if (e.getRepeatCount() == 0) {
                     okDown = true;
                     okHeld = false;
+                    removeCallbacks(okHold);
+                    postDelayed(okHold, 450); // details open while OK is still held
                 } else if (okDown && !okHeld && e.getEventTime() - e.getDownTime() >= 450) {
+                    removeCallbacks(okHold);
                     okHeld = true;
                     if (listener != null) listener.onDetails(sel, current());
                 }
@@ -165,10 +168,18 @@ public class EpgGrid extends View {
     }
 
     private boolean okDown, okHeld;
+    private final Runnable okHold = new Runnable() {
+        public void run() {
+            if (!okDown || okHeld) return;
+            okHeld = true;
+            if (listener != null) listener.onDetails(sel, current());
+        }
+    };
 
     @Override
     public boolean onKeyUp(int code, KeyEvent e) {
         if (code == KeyEvent.KEYCODE_DPAD_CENTER || code == KeyEvent.KEYCODE_ENTER || code == KeyEvent.KEYCODE_NUMPAD_ENTER) {
+            removeCallbacks(okHold);
             if (okDown && !okHeld && listener != null && !channels.isEmpty()) listener.onPlay(sel);
             okDown = okHeld = false;
             return true;
