@@ -192,7 +192,7 @@ final class LogoIntro extends FrameLayout {
                 PropertyValuesHolder.ofFloat(TRANSLATION_X, from, over, 0f),
                 PropertyValuesHolder.ofFloat(SCALE_X, 1.6f, 0.94f, 1f),
                 PropertyValuesHolder.ofFloat(ALPHA, trail ? new float[]{0f, 0.45f, 0f} : new float[]{0f, 1f, 1f}));
-        a.setDuration(560);
+        a.setDuration(720);
         a.setStartDelay(delay);
         a.setInterpolator(new PathInterpolator(0.16f, 1f, 0.3f, 1f));
         if (trail) {

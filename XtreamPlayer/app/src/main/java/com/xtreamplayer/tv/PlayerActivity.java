@@ -209,6 +209,9 @@ public class PlayerActivity extends Activity implements Engine.Listener, PlayerT
         vodTitle.setPadding(0, Ui.dp(this, 4), 0, Ui.dp(this, 22));
         vodOverlay.addView(vodSub);
         vodOverlay.addView(vodTitle);
+        // The title shows at the top right while paused (PlayerTop), not above the bar as well
+        vodSub.setVisibility(View.GONE);
+        vodTitle.setVisibility(View.GONE);
 
         seekBubble = Ui.medium(this, "", 18, Ui.W1);
         seekBubble.setTypeface(Ui.semibold());
@@ -674,7 +677,7 @@ public class PlayerActivity extends Activity implements Engine.Listener, PlayerT
             vodTitle.setText(it.name);
             vodSub.setText(Item.EPISODE.equals(it.type)
                     ? XtreamApi.joinNonEmpty(it.parentName, "Episode " + it.num) : "");
-            vodSub.setVisibility(Item.EPISODE.equals(it.type) ? View.VISIBLE : View.GONE);
+            vodSub.setVisibility(View.GONE);
             boolean ep = Item.EPISODE.equals(it.type);
             top.setInfo(ep ? (it.parentName == null ? it.name : it.parentName) : it.name,
                     ep ? (it.season >= 0 ? "S" + it.season + ": " : "") + "E" + it.num + " “" + it.name + "”" : null);
@@ -830,11 +833,13 @@ public class PlayerActivity extends Activity implements Engine.Listener, PlayerT
         });
     }
 
-    private void status(String s) {
+    private void status(String s) { statusLong(s, 2500); }
+
+    private void statusLong(String s, long ms) {
         statusPill.setText(s);
         statusPill.setVisibility(View.VISIBLE);
         Async.MAIN.removeCallbacks(hideStatus);
-        Async.MAIN.postDelayed(hideStatus, 2500);
+        Async.MAIN.postDelayed(hideStatus, ms);
     }
 
     private boolean panelOpen() {
@@ -1703,7 +1708,11 @@ public class PlayerActivity extends Activity implements Engine.Listener, PlayerT
         }, new Async.Done<Intros.Segments>() {
             public void done(Intros.Segments s, Exception e) {
                 // Still on this episode? (By what it is: the list around it may have been reloaded meanwhile)
-                if (!isFinishing() && queue != null && s != null && current().key().equals(ep.key())) segments = s;
+                if (!isFinishing() && queue != null && s != null && current().key().equals(ep.key())) {
+                    segments = s;
+                    // Say what the lookup found, so a missing Skip button is explained on the spot
+                    statusLong("Skip Intro: " + (s.hasIntro() || s.hasRecap() ? "ready  ·  " : "") + s.status, 6000);
+                }
             }
         });
     }

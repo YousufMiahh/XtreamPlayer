@@ -17,7 +17,14 @@ import java.io.InputStream;
 /** A brief branded screen on launch, then on to the app. */
 public class SplashActivity extends Activity {
     private static final long SHOW_MS = 2300, MAX_WAIT_MS = 6000; // the logo intro, then on
-    private boolean left, shownLongEnough, libraryReady;
+    private boolean left, shownLongEnough, libraryReady, introStarted;
+    private Runnable startIntro;
+
+    @Override
+    public void onWindowFocusChanged(boolean has) {
+        super.onWindowFocusChanged(has);
+        if (has && startIntro != null && !introStarted) getWindow().getDecorView().postDelayed(startIntro, 120);
+    }
 
     private final Runnable next = new Runnable() {
         public void run() {
@@ -64,8 +71,18 @@ public class SplashActivity extends Activity {
         name.setTranslationY(Ui.dp(this, 14));
         by.setAlpha(0f);
         final TextView nameF = name, byF = by;
-        logo.post(new Runnable() {
+        // Start once the window is really on screen: TVs show their own launch screen first, which
+        // would hide the letters flying in
+        startIntro = new Runnable() {
             public void run() {
+                if (introStarted) return;
+                introStarted = true;
+                getWindow().getDecorView().postDelayed(new Runnable() {
+                    public void run() {
+                        shownLongEnough = true;
+                        if (libraryReady) next.run();
+                    }
+                }, SHOW_MS);
                 logo.play(new Runnable() {
                     public void run() {
                         nameF.animate().alpha(1f).translationY(0f).setDuration(500).setInterpolator(ease).start();
@@ -73,7 +90,8 @@ public class SplashActivity extends Activity {
                     }
                 });
             }
-        });
+        };
+        root.postDelayed(startIntro, 1200); // in case focus never arrives
 
         // While the logo shows, load Live TV (and every section's categories) from the copy
         // saved on the device, so the first tap on Live TV is instant.
@@ -98,12 +116,7 @@ public class SplashActivity extends Activity {
         } else {
             libraryReady = true;
         }
-        root.postDelayed(new Runnable() {
-            public void run() {
-                shownLongEnough = true;
-                if (libraryReady) next.run();
-            }
-        }, SHOW_MS);
+
         root.postDelayed(next, MAX_WAIT_MS); // never keep you waiting long
     }
 
