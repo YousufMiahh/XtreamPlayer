@@ -1,1 +1,2 @@
 - Picture: press ☰ (or hold OK) while watching and choose Fit, Fill screen, Stretch, 16:9 or 4:3. It's remembered for each channel, film and series.
+- "Because you watched" now only uses films and series you actually watched (finished, or at least 5 minutes in), not ones you only opened or started by accident.

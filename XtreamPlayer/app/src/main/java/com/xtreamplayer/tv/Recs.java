@@ -29,6 +29,7 @@ final class Recs {
     }
 
     private static final long KEEP_MS = 6 * 3600_000L;
+    private static final long MIN_WATCHED_MS = 5 * 60_000L;
     private static List<Row> cached;
     private static String cachedFor;
     private static long cachedAt;
@@ -39,6 +40,9 @@ final class Recs {
         Map<String, Item> sources = new LinkedHashMap<>();
         for (Item h : prefs.history(false)) {
             if (sources.size() >= 3) break;
+            // Only what you actually watched: finished, or at least 5 minutes in. Not something that
+            // was only opened, started by accident or played on its own for a moment
+            if (!prefs.isWatched(h) && prefs.position(h) < MIN_WATCHED_MS) continue;
             if (Item.MOVIE.equals(h.type)) sources.put(h.key(), h);
             else if (Item.EPISODE.equals(h.type) && h.parentId != null) {
                 Item s = new Item(Item.SERIES, h.parentId, h.parentName == null ? "" : h.parentName);
