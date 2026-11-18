@@ -32,9 +32,9 @@ import java.util.Locale;
  * Movies/episodes: OK play/pause, ◀ back 5 s, ▶ forward 10 s, ▼ or ☰ subtitles & audio.
  * Live TV: ▲/▼ change channel, OK channel list, ☰ or hold OK favourite, subtitles & audio.
  */
-public class PlayerActivity extends Activity implements Engine.Listener {
+public class PlayerActivity extends Activity implements Engine.Listener, PlayerTop.Listener {
     static final long BACK_MS = 5000, FORWARD_MS = 10000;
-    static final String VOD_HINT = "◀  5 sec      ▶  10 sec      OK  Play / Pause      ▼  Scrub      "
+    static final String VOD_HINT = "◀  5 sec      ▶  10 sec      OK  Play / Pause      ▲  More      ▼  Scrub      "
             + (Ui.hasMenuKey() ? "☰" : "Hold OK") + "  Subtitles & Audio";
     static final String SCRUB_HINT = "◀ ▶  Move (hold to go faster)      OK  Play from here      Back  Cancel";
     static final float[] SUB_SIZES = {0.045f, 0.056f, 0.068f, 0.085f};
@@ -94,7 +94,9 @@ public class PlayerActivity extends Activity implements Engine.Listener {
     private long seekTarget = -1, burst;
     private int lastRendered = -1, stallTicks, recoveries;
 
-    private final Runnable hideOverlay = new Runnable() { public void run() { fade(vodOverlay, false); } };
+    private final Runnable hideOverlay = new Runnable() {
+        public void run() { if (top == null || !top.focused()) fade(vodOverlay, false); } // not while you're on the top row
+    };
     private final Runnable hideBanner = new Runnable() { public void run() { fade(liveBanner, false); } };
     private final Runnable endBurst = new Runnable() {
         public void run() {
@@ -155,6 +157,7 @@ public class PlayerActivity extends Activity implements Engine.Listener {
         buildLiveBanner(root);
         buildChannelPanel(root);
         buildTrackPanel(root);
+        buildEpisodesPanel(root);
 
         errorText = Ui.text(this, "", 20, Ui.TEXT);
         errorText.setGravity(Gravity.CENTER);
@@ -242,6 +245,8 @@ public class PlayerActivity extends Activity implements Engine.Listener {
         vodHint.setPadding(0, Ui.dp(this, 18), 0, 0);
         vodOverlay.addView(vodHint, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         root.addView(vodOverlay, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM));
+        top = new PlayerTop(this, this);
+        root.addView(top, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP));
 
         skipBtn = Ui.medium(this, "OK   Skip Intro", 20, 0xFF000000);
         skipBtn.setTypeface(Ui.semibold());
@@ -539,6 +544,7 @@ public class PlayerActivity extends Activity implements Engine.Listener {
     public void onPlayingChanged(boolean playing) {
         centerIcon.setPaused(!playing);
         if (isLive()) return;
+        top.setPaused(!playing && engine != null && engine.isReady());
         if (!playing && engine != null && engine.isReady()) {
             centerIcon.setVisibility(View.VISIBLE);
             showOverlay(false);
@@ -641,6 +647,11 @@ public class PlayerActivity extends Activity implements Engine.Listener {
             vodSub.setText(Item.EPISODE.equals(it.type)
                     ? XtreamApi.joinNonEmpty(it.parentName, "Episode " + it.num) : "");
             vodSub.setVisibility(Item.EPISODE.equals(it.type) ? View.VISIBLE : View.GONE);
+            boolean ep = Item.EPISODE.equals(it.type);
+            top.setInfo(ep ? (it.parentName == null ? it.name : it.parentName) : it.name,
+                    ep ? (it.season >= 0 ? "S" + it.season + ": " : "") + "E" + it.num + " “" + it.name + "”" : null);
+            refreshTop();
+            top.setPaused(false);
             showOverlay(true);
         }
     }
@@ -714,6 +725,10 @@ public class PlayerActivity extends Activity implements Engine.Listener {
 
     private void fade(final View v, boolean show) {
         if (v == null) return;
+        if (v == vodOverlay && top != null) { // the top row comes and goes with the bottom controls
+            if (!show) top.leave();
+            fade(top, show);
+        }
         if (show) {
             if (v.getVisibility() != View.VISIBLE) {
                 v.setAlpha(0f);
@@ -795,12 +810,14 @@ public class PlayerActivity extends Activity implements Engine.Listener {
     }
 
     private boolean panelOpen() {
-        return channelPanel.getVisibility() == View.VISIBLE || trackPanel.getVisibility() == View.VISIBLE;
+        return channelPanel.getVisibility() == View.VISIBLE || trackPanel.getVisibility() == View.VISIBLE
+                || episodesPanel.getVisibility() == View.VISIBLE;
     }
 
     private void hidePanels() {
         fade(channelPanel, false);
         fade(trackPanel, false);
+        fade(episodesPanel, false);
         videoHost.requestFocus();
     }
 
@@ -814,6 +831,150 @@ public class PlayerActivity extends Activity implements Engine.Listener {
     }
 
     // ------------------------------------------------------------ subtitles, audio & player
+
+    // ------------------------------------------------------------ top row & episodes
+
+    private PlayerTop top;
+    private ScrollView episodesPanel;
+    private LinearLayout episodesList;
+
+    /** Next Episode / Next in Queue button: only when there is one. */
+    private void refreshTop() {
+        if (top == null || queue == null || isLive()) return;
+        Item nx = upNext();
+        boolean ep = Item.EPISODE.equals(current().type);
+        top.setButtons(nx != null, ep);
+        top.setNextName(nx != null && ep && Item.EPISODE.equals(nx.type) && current().parentId != null
+                && current().parentId.equals(nx.parentId) ? "Next Episode" : "Next in Queue");
+    }
+
+    public void onTopAction(int which) {
+        switch (which) {
+            case PlayerTop.BACK:
+                finish();
+                break;
+            case PlayerTop.RESTART:
+                top.leave();
+                engine.seekTo(0);
+                engine.play();
+                status("Playing from the beginning");
+                showOverlay(true);
+                break;
+            case PlayerTop.NEXT:
+                top.leave();
+                if (upNext() != null) playNext();
+                break;
+            case PlayerTop.EPISODES:
+                top.leave();
+                openEpisodes();
+                break;
+            case PlayerTop.SETTINGS:
+                top.leave();
+                openTracks();
+                break;
+        }
+    }
+
+    private void buildEpisodesPanel(FrameLayout root) {
+        episodesPanel = new ScrollView(this);
+        episodesPanel.setBackground(Ui.rounded(this, Ui.SHEET, 0, 26));
+        episodesPanel.setVerticalScrollBarEnabled(false);
+        episodesPanel.setVisibility(View.GONE);
+        episodesList = new LinearLayout(this);
+        episodesList.setOrientation(LinearLayout.VERTICAL);
+        int p = Ui.dp(this, 22);
+        episodesList.setPadding(p, p, p, p);
+        episodesPanel.addView(episodesList);
+        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(Ui.dp(this, 640), ViewGroup.LayoutParams.MATCH_PARENT, Gravity.END);
+        lp.setMargins(0, Ui.dp(this, 40), Ui.dp(this, 40), Ui.dp(this, 40));
+        root.addView(episodesPanel, lp);
+    }
+
+    /** The series' episodes, every season, opened on the one playing. */
+    private void openEpisodes() {
+        final Item cur = current();
+        if (!Item.EPISODE.equals(cur.type)) return;
+        fade(vodOverlay, false);
+        episodesList.removeAllViews();
+        TextView t = Ui.title(this, cur.parentName == null ? "Episodes" : cur.parentName, 26);
+        t.setPadding(Ui.dp(this, 10), Ui.dp(this, 6), 0, Ui.dp(this, 14));
+        episodesList.addView(t);
+        final TextView wait = Ui.text(this, "Loading episodes…", 16, Ui.TEXT2);
+        wait.setPadding(Ui.dp(this, 10), 0, 0, 0);
+        episodesList.addView(wait);
+        fade(episodesPanel, true);
+        Async.run(new Async.Work<List<Item>>() {
+            public List<Item> run() throws Exception {
+                List<Item> all = Episodes.following(api, cur);
+                return all == null || all.isEmpty() ? new java.util.ArrayList<>(queue) : all;
+            }
+        }, new Async.Done<List<Item>>() {
+            public void done(List<Item> all, Exception e) {
+                if (isFinishing() || episodesPanel.getVisibility() != View.VISIBLE || current() != cur) return;
+                episodesList.removeView(wait);
+                if (all == null || all.isEmpty()) all = new java.util.ArrayList<>(queue);
+                fillEpisodes(all, cur);
+            }
+        });
+    }
+
+    private void fillEpisodes(final List<Item> all, Item cur) {
+        View focusMe = null;
+        int season = Integer.MIN_VALUE;
+        for (int i = 0; i < all.size(); i++) {
+            final Item ep = all.get(i);
+            if (ep.season != season) {
+                season = ep.season;
+                TextView h = Ui.medium(this, (season == 0 ? "SPECIALS" : season < 0 ? "EPISODES" : "SEASON " + season), 13, Ui.TEXT2);
+                h.setLetterSpacing(0.1f);
+                h.setPadding(Ui.dp(this, 10), Ui.dp(this, i == 0 ? 2 : 18), 0, Ui.dp(this, 6));
+                episodesList.addView(h);
+            }
+            boolean playing = ep.key().equals(cur.key());
+            LinearLayout r = new LinearLayout(this);
+            r.setOrientation(LinearLayout.VERTICAL);
+            r.setFocusable(true);
+            r.setPadding(Ui.dp(this, 14), Ui.dp(this, 10), Ui.dp(this, 14), Ui.dp(this, 10));
+            final TextView name = Ui.oneLine(Ui.medium(this, (ep.num == null ? "" : ep.num + ".  ") + ep.name, 18, Ui.TEXT));
+            if (playing) name.setTypeface(Ui.semibold());
+            r.addView(name);
+            long pos = prefs.position(ep), dur = prefs.duration(ep);
+            String sub = playing ? "Now playing" : prefs.isWatched(ep) ? "✓ Watched"
+                    : pos > 0 && dur > 0 ? SeriesActivity.fmt(Math.max(0, dur - pos)) + " left" : ep.duration;
+            final TextView s2 = sub == null || sub.isEmpty() ? null : Ui.medium(this, sub, 14, Ui.TEXT2);
+            if (s2 != null) { s2.setPadding(0, Ui.dp(this, 3), 0, 0); r.addView(s2); }
+            r.setBackground(Ui.rounded(this, playing ? Ui.SURFACE : 0, 0, 12));
+            r.setOnFocusChangeListener(new View.OnFocusChangeListener() {
+                public void onFocusChange(View v, boolean has) {
+                    v.setBackground(Ui.rounded(PlayerActivity.this, has ? Ui.FOCUS_BG : 0, 0, 12));
+                    name.setTextColor(has ? Ui.ON_FOCUS : Ui.TEXT);
+                    if (s2 != null) s2.setTextColor(has ? Ui.ON_FOCUS2 : Ui.TEXT2);
+                }
+            });
+            final int at = i;
+            r.setOnClickListener(new View.OnClickListener() {
+                public void onClick(View v) {
+                    hidePanels();
+                    savePosition();
+                    queue = new java.util.ArrayList<>(all);
+                    index = at;
+                    retries = 0;
+                    play(true); // carries on where you left that episode, like Netflix
+                }
+            });
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            lp.bottomMargin = Ui.dp(this, 2);
+            episodesList.addView(r, lp);
+            if (playing) focusMe = r;
+        }
+        final View f = focusMe != null ? focusMe : episodesList.getChildCount() > 2 ? episodesList.getChildAt(2) : null;
+        if (f != null) {
+            f.requestFocus();
+            episodesPanel.post(new Runnable() { // the playing episode in the middle of the list
+                public void run() { episodesPanel.scrollTo(0, Math.max(0, f.getTop() - episodesPanel.getHeight() / 3)); }
+            });
+        }
+    }
 
     private void openTracks() {
         fade(vodOverlay, false);
@@ -1062,6 +1223,22 @@ public class PlayerActivity extends Activity implements Engine.Listener {
             }
         }
 
+        // The top row (Back, Play From Beginning, Next, Episodes, Settings): ◀ ▶ move, OK chooses, ▼ / Back leave it
+        if (engine != null && !isLive() && top.focused() && !panelOpen() && !scrubbing) {
+            if (e.getAction() == KeyEvent.ACTION_DOWN) {
+                if (k == KeyEvent.KEYCODE_DPAD_LEFT) top.move(-1);
+                else if (k == KeyEvent.KEYCODE_DPAD_RIGHT) top.move(1);
+                else if (k == KeyEvent.KEYCODE_DPAD_DOWN) { top.leave(); showOverlay(true); }
+                else if (k == KeyEvent.KEYCODE_BACK) { top.leave(); showOverlay(true); }
+                else if (!okKey) return super.dispatchKeyEvent(e);
+                return true;
+            }
+            if (e.getAction() == KeyEvent.ACTION_UP) {
+                if (okKey) top.activate();
+                return true;
+            }
+        }
+
         // Films & series: OK pauses when released; held, it opens the menu (remotes without ☰)
         if (engine != null && okKey && !isLive() && !panelOpen() && errorText.getVisibility() != View.VISIBLE) {
             if (e.getAction() == KeyEvent.ACTION_DOWN) {
@@ -1212,7 +1389,12 @@ public class PlayerActivity extends Activity implements Engine.Listener {
                 seekBy(FORWARD_MS);
                 return true;
             case KeyEvent.KEYCODE_DPAD_UP:
-                showOverlay(true);
+                if (vodOverlay.getVisibility() == View.VISIBLE && e.getRepeatCount() == 0) {
+                    top.focusDefault(); // ▲ again: onto the top row
+                    showOverlay(false);
+                } else {
+                    showOverlay(true);
+                }
                 return true;
             case KeyEvent.KEYCODE_DPAD_DOWN:
                 if (e.getRepeatCount() == 0) enterScrub();
@@ -1344,6 +1526,7 @@ public class PlayerActivity extends Activity implements Engine.Listener {
                 q.set(at, cur);
                 queue = q;
                 index = at;
+                refreshTop(); // a Next Episode button now
             }
         });
     }
