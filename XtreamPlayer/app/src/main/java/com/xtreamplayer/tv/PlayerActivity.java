@@ -886,6 +886,10 @@ public class PlayerActivity extends Activity implements Engine.Listener {
         if (audio.isEmpty()) note("No audio tracks found");
 
         audioSyncRows();
+        if (Item.EPISODE.equals(current().type)) {
+            header("Skip Intro");
+            note(segments == null ? "Looking up this episode…" : segments.status);
+        }
 
         String what = Item.EPISODE.equals(current().type) ? "this series" : isLive() ? "this channel" : "this film";
         header("Picture  ·  for " + what);
@@ -1412,29 +1416,40 @@ public class PlayerActivity extends Activity implements Engine.Listener {
         segments = null;
         final Item ep = current();
         if (!Item.EPISODE.equals(ep.type) || ep.season < 0 || ep.parentName == null) return;
-        final int at = index;
+        final long knownLength = prefs.duration(ep); // from an earlier play: picks the right cut
         Async.run(new Async.Work<Intros.Segments>() {
             public Intros.Segments run() {
                 int n;
-                try { n = Integer.parseInt(ep.num == null ? "" : ep.num.trim()); } catch (Exception e) { return null; }
+                try { n = Integer.parseInt(ep.num == null ? "" : ep.num.trim()); } catch (Exception e) { return Intros.none("No episode number for this episode"); }
                 String id = Tmdb.findId(getApplicationContext(), Tmdb.TV, ep.parentName, ep.tmdb);
-                return id == null ? null : Intros.get(id, ep.season, n);
+                return Intros.get(id, ep.season, n, knownLength);
             }
         }, new Async.Done<Intros.Segments>() {
             public void done(Intros.Segments s, Exception e) {
-                if (!isFinishing() && at == index && current() == ep) segments = s;
+                // Still on this episode? (By what it is: the list around it may have been reloaded meanwhile)
+                if (!isFinishing() && queue != null && s != null && current().key().equals(ep.key())) segments = s;
             }
         });
     }
 
-    /** The "Skip Intro" button shows while the intro is playing. */
+    /** Which part the Skip button is for right now: 1 recap, 2 intro, 0 none. */
+    private int skipWhat;
+
+    /** The Skip button shows while the recap or the intro is playing. */
     private void checkIntro() {
-        if (engine == null || isLive() || segments == null || !segments.hasIntro() || scrubbing) {
+        if (engine == null || isLive() || segments == null || (!segments.hasIntro() && !segments.hasRecap()) || scrubbing) {
             showSkip(false);
             return;
         }
         long p = engine.position();
-        showSkip(p >= segments.introStart && p < segments.introEnd - 1500);
+        int what = 0;
+        if (segments.hasRecap() && p >= segments.recapStart - 500 && p < segments.recapEnd - 1500) what = 1;
+        else if (segments.hasIntro() && p >= segments.introStart - 500 && p < segments.introEnd - 1500) what = 2;
+        if (what != 0 && what != skipWhat) {
+            skipWhat = what;
+            skipBtn.setText("OK   " + (what == 1 ? "Skip Recap" : "Skip Intro"));
+        }
+        showSkip(what != 0);
     }
 
     private void showSkip(boolean on) {
@@ -1445,9 +1460,12 @@ public class PlayerActivity extends Activity implements Engine.Listener {
 
     private void skipIntro() {
         if (segments == null) return;
-        engine.seekTo(segments.introEnd);
+        boolean recap = skipWhat == 1 && segments.hasRecap();
+        long to = recap ? segments.recapEnd : segments.introEnd;
+        if (to <= 0) return;
+        engine.seekTo(to);
         showSkip(false);
-        status("Skipped the intro");
+        status(recap ? "Skipped the recap" : "Skipped the intro");
     }
 
     private void togglePause() {
