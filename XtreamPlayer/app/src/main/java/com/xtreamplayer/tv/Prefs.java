@@ -257,6 +257,16 @@ public class Prefs {
 
     public void clearPlayerChoices() { sp.edit().remove(ns() + "vlc_items").remove(ns() + "exo_items").apply(); }
 
+    /** "Don't recommend based on this": films / series kept out of Because you watched. */
+    public boolean recBlocked(String key) { return set("rec_block").contains(key); }
+    public void blockRec(String key) {
+        Set<String> s = new HashSet<>(set("rec_block"));
+        s.add(key);
+        sp.edit().putStringSet(ns() + "rec_block", s).apply();
+    }
+    public int recBlockedCount() { return set("rec_block").size(); }
+    public void clearRecBlocks() { sp.edit().remove(ns() + "rec_block").apply(); }
+
     private Set<String> set(String k) { return sp.getStringSet(ns() + k, new HashSet<String>()); }
 
     SharedPreferences raw() { return sp; }

@@ -267,6 +267,6 @@ public final class Ui {
     public static void animateFocus(View v, boolean on, float scale) {
         float s = on ? scale : 1f;
         v.animate().scaleX(s).scaleY(s).translationZ(on ? dp(v.getContext(), 14) : 0)
-                .setDuration(180).setInterpolator(EASE).start();
+                .setDuration(230).setInterpolator(EASE).start();
     }
 }

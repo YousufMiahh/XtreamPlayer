@@ -266,13 +266,13 @@ public final class TopBar {
         if (!g.shown || g.pill.getAlpha() < 0.99f) {
             g.pill.setScaleX(fromX == tx ? 0.92f : 1f);
             g.pill.setScaleY(fromX == tx ? 0.92f : 1f);
-            g.pill.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(180).setInterpolator(EASE).start();
+            g.pill.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(230).setInterpolator(EASE).start();
         }
         g.shown = true;
         final float fx = fromX, fw = fromW;
         apply(g, lp, fx, fw);
         g.anim = ValueAnimator.ofFloat(0f, 1f);
-        g.anim.setDuration(280);
+        g.anim.setDuration(360);
         g.anim.setInterpolator(EASE);
         g.anim.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
             public void onAnimationUpdate(ValueAnimator v) {
@@ -341,7 +341,7 @@ public final class TopBar {
             v.animate().cancel();
             v.setAlpha(0f);
             v.setTranslationX(dx);
-            v.animate().alpha(1f).translationX(0f).setStartDelay(60).setDuration(420).setInterpolator(EASE).start();
+            v.animate().alpha(1f).translationX(0f).setStartDelay(60).setDuration(500).setInterpolator(EASE).start();
         }
     }
 

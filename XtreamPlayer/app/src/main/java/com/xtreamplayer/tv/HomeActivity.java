@@ -68,6 +68,7 @@ public class HomeActivity extends Activity {
         scroll.addView(col);
         root.addView(scroll, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         setContentView(root);
+        peek = new HomePeek(this, prefs, api, root);
 
         buildLocalRows();
         startLibrary();
@@ -87,6 +88,19 @@ public class HomeActivity extends Activity {
     }
 
     private View topBar;
+    private HomePeek peek;
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        if (peek != null) peek.pause();
+    }
+
+    @Override
+    protected void onDestroy() {
+        if (peek != null) peek.release();
+        super.onDestroy();
+    }
 
     /** Quick-start tips for Home (Settings → Show Tutorial runs them again). */
     private void homeTour() {
@@ -175,6 +189,7 @@ public class HomeActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        if (peek != null) peek.resume();
         if (resumedOnce) {
             View f = getCurrentFocus();
             boolean inLocal = f != null && isInside(f, localRows);
@@ -286,10 +301,39 @@ public class HomeActivity extends Activity {
         remoteRows.removeAllViews();
         if (prefs.homeShows("top_movies")) add(remoteRows, "Top 10 Movies on Netflix UK", topMovies, Cards.Shape.POSTER);
         if (prefs.homeShows("top_series")) add(remoteRows, "Top 10 Series on Netflix UK", topSeries, Cards.Shape.POSTER);
-        if (recRows != null && prefs.homeShows("recommended")) for (Recs.Row r : recRows) add(remoteRows, r.title, r.items, Cards.Shape.POSTER);
+        if (recRows != null && prefs.homeShows("recommended")) for (final Recs.Row r : recRows) {
+            if (r.items == null || r.items.isEmpty()) continue;
+            if (r.sourceKey != null && prefs.recBlocked(r.sourceKey)) continue;
+            Cards.OnMenu m = r.sourceKey == null ? favMenu : new Cards.OnMenu() {
+                public void menu(Item it, View card) { recMenu(r, it, card); }
+            };
+            LinearLayout shelf = Cards.shelf(this, r.title, r.items, Cards.Shape.POSTER, prefs, pick, m);
+            if (r.sourceKey != null) ((TextView) shelf.getChildAt(0)).setText(Cards.titleWithMenuHint(this, r.title, "for options"));
+            remoteRows.addView(shelf);
+        }
         if (newMovies != null && prefs.homeShows("new_movies")) add(remoteRows, "Recently Added Movies", newMovies, Cards.Shape.POSTER);
         if (newSeries != null && prefs.homeShows("new_series")) add(remoteRows, "Recently Added Series", newSeries, Cards.Shape.POSTER);
         updateEmpty();
+    }
+
+    /** Hold OK on a "Because you watched" card: this title's options, or stop basing rows on that one. */
+    private void recMenu(final Recs.Row r, final Item it, final View card) {
+        String[] opts = {"Options for " + it.name + "…", "Don't recommend based on " + r.sourceName};
+        new android.app.AlertDialog.Builder(this, Ui.DARK ? android.R.style.Theme_Material_Dialog_Alert : android.R.style.Theme_Material_Light_Dialog_Alert)
+                .setTitle(r.title)
+                .setItems(opts, new android.content.DialogInterface.OnClickListener() {
+                    public void onClick(android.content.DialogInterface d, int which) {
+                        if (which == 0) { favMenu.menu(it, card); return; }
+                        prefs.blockRec(r.sourceKey);
+                        android.widget.Toast.makeText(HomeActivity.this, "You won't see recommendations based on " + r.sourceName, android.widget.Toast.LENGTH_SHORT).show();
+                        boolean inRemote = isInside(card, remoteRows);
+                        buildRemoteRows();
+                        if (inRemote) focusFirstCard();
+                        recSig = null;
+                        loadRecs(); // the next thing you watched takes its place
+                    }
+                })
+                .show();
     }
 
     private void add(LinearLayout parent, String title, List<Item> items, Cards.Shape shape) {

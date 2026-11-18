@@ -21,6 +21,8 @@ final class Recs {
     static final class Row {
         final String title;
         final List<Item> items;
+        /** What it's based on ("Because you watched X"), so it can be turned off; null for others. */
+        String sourceKey, sourceName;
 
         Row(String title, List<Item> items) {
             this.title = title;
@@ -43,6 +45,8 @@ final class Recs {
             // Only what you actually watched: finished, or at least 5 minutes in. Not something that
             // was only opened, started by accident or played on its own for a moment
             if (!prefs.isWatched(h) && prefs.position(h) < MIN_WATCHED_MS) continue;
+            // "Don't recommend based on this"
+            if (prefs.recBlocked(Item.EPISODE.equals(h.type) && h.parentId != null ? Item.SERIES + ":" + h.parentId : h.key())) continue;
             if (Item.MOVIE.equals(h.type)) sources.put(h.key(), h);
             else if (Item.EPISODE.equals(h.type) && h.parentId != null) {
                 Item s = new Item(Item.SERIES, h.parentId, h.parentName == null ? "" : h.parentName);
@@ -73,7 +77,12 @@ final class Recs {
                 if (keep.size() >= 20) break;
             }
             String name = Tmdb.cleanName(src.name)[0];
-            if (keep.size() >= 3) out.add(new Row("Because you watched " + (name.isEmpty() ? src.name : name), keep));
+            if (keep.size() >= 3) {
+                Row row = new Row("Because you watched " + (name.isEmpty() ? src.name : name), keep);
+                row.sourceKey = src.key();
+                row.sourceName = name.isEmpty() ? src.name : name;
+                out.add(row);
+            }
         }
         if (out.isEmpty()) {
             List<Item> byGenre = byGenre(prefs, series, sources.values());

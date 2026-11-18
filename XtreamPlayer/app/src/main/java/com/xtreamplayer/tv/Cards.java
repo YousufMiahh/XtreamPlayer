@@ -219,6 +219,7 @@ public final class Cards {
                 }
             }
             LinearLayout card = card(c, shape, img, it.name, sub, progress);
+            card.setTag(it); // Home's previews know what it is
             if (prefs != null && prefs.isWatched(it)) markWatched(card);
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
             lp.rightMargin = Ui.dp(c, 32);

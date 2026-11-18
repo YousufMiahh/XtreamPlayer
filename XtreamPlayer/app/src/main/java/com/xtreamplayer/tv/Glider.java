@@ -49,7 +49,7 @@ public class Glider {
             if (shown) {
                 shown = false;
                 if (anim != null) anim.cancel();
-                pill.animate().alpha(0f).setDuration(140).start();
+                pill.animate().alpha(0f).setDuration(180).start();
             }
             lastSel = -1;
             return;
@@ -65,7 +65,7 @@ public class Glider {
         if (!shown) {
             shown = true;
             pill.animate().cancel();
-            pill.animate().alpha(1f).setDuration(140).start();
+            pill.animate().alpha(1f).setDuration(180).start();
         }
         if (!glide) {
             move(ty);
@@ -73,7 +73,7 @@ public class Glider {
         }
         final float fy = y;
         anim = ValueAnimator.ofFloat(0f, 1f);
-        anim.setDuration(240);
+        anim.setDuration(320);
         anim.setInterpolator(EASE);
         anim.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
             public void onAnimationUpdate(ValueAnimator v) {

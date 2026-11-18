@@ -703,11 +703,11 @@ public class BrowseActivity extends Activity implements TopBar.Reselect {
         moving.animate().cancel();
         moving.setAlpha(0f);
         moving.setTranslationY(d);
-        moving.animate().alpha(1f).translationY(0f).setDuration(380).setInterpolator(ease).start();
+        moving.animate().alpha(1f).translationY(0f).setDuration(460).setInterpolator(ease).start();
         header.animate().cancel();
         header.setAlpha(0f);
         header.setTranslationY(d * 0.5f);
-        header.animate().alpha(1f).translationY(0f).setDuration(320).setInterpolator(ease).start();
+        header.animate().alpha(1f).translationY(0f).setDuration(400).setInterpolator(ease).start();
         count.setAlpha(0f);
         count.animate().alpha(1f).setStartDelay(80).setDuration(300).start();
         count.setText(list.size() == 1 ? "1 item" : list.size() + " items");

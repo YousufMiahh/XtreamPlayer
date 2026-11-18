@@ -14,8 +14,12 @@ final class Preview implements Engine.Listener {
     private final Activity a;
     private final Prefs prefs;
     private final XtreamApi api;
-    private final FrameLayout host;
-    private final View cover;
+    private FrameLayout host;
+    private View cover;
+    private int picture = -1;
+    private Runnable onReady;
+
+    void setOnReady(Runnable r) { onReady = r; }
     private Engine engine;
     private Item item;
     private boolean playing;
@@ -26,6 +30,23 @@ final class Preview implements Engine.Listener {
         this.api = api;
         this.host = host;
         this.cover = cover;
+    }
+
+    /** Plays somewhere else from now on (Home: the highlighted card). */
+    void moveTo(FrameLayout newHost, View newCover) {
+        stop();
+        if (engine != null && newHost != host) {
+            ((ViewGroup) engine.view().getParent()).removeView(engine.view());
+            newHost.addView(engine.view(), 0, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        }
+        host = newHost;
+        cover = newCover;
+    }
+
+    /** Engine.PIC_FILL to fill a small frame. */
+    void setPicture(int mode) {
+        picture = mode;
+        if (engine != null) engine.setPicture(mode);
     }
 
     boolean isPlaying(Item it) { return playing && item != null && it != null && item.key().equals(it.key()); }
@@ -42,6 +63,7 @@ final class Preview implements Engine.Listener {
                 } catch (Throwable t) {
                     engine = new ExoEngine(a, prefs, this);
                 }
+                if (picture >= 0) engine.setPicture(picture);
                 host.addView(engine.view(), 0, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
             }
             item = it;
@@ -66,7 +88,7 @@ final class Preview implements Engine.Listener {
     void release() {
         stop();
         if (engine != null) {
-            host.removeView(engine.view());
+            if (engine.view().getParent() instanceof ViewGroup) ((ViewGroup) engine.view().getParent()).removeView(engine.view());
             engine.release();
             engine = null;
         }
@@ -76,6 +98,7 @@ final class Preview implements Engine.Listener {
 
     public void onReady() {
         // A moment for the first picture, then uncover it
+        if (playing && onReady != null) onReady.run();
         if (playing && cover != null) cover.animate().alpha(0f).setStartDelay(300).setDuration(500).start();
     }
 

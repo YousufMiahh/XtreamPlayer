@@ -127,6 +127,15 @@ public class SettingsActivity extends Activity {
             });
         }
 
+        if (prefs.recBlockedCount() > 0) {
+            row("Because You Watched", prefs.recBlockedCount() + " turned off  ·  Bring back", new Action() {
+                public void run(TextView v) {
+                    prefs.clearRecBlocks();
+                    v.setText("All back on");
+                }
+            });
+        }
+
         section("Subtitles");
         row("Size", SUB_SIZES[prefs.subtitleSize()], new Action() {
             public void run(TextView v) {
