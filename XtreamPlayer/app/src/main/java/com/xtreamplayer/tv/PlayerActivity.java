@@ -202,6 +202,8 @@ public class PlayerActivity extends Activity implements Engine.Listener, PlayerT
         vodOverlay.setBackground(Ui.scrimBottom());
         vodOverlay.setPadding(Ui.dp(this, 80), Ui.dp(this, 160), Ui.dp(this, 80), Ui.dp(this, 52));
         vodOverlay.setVisibility(View.GONE);
+        vodOverlay.setClipChildren(false); // highlighted buttons grow a little: don't cut them off
+        vodOverlay.setClipToPadding(false);
 
         vodSub = Ui.oneLine(Ui.medium(this, "", 18, Ui.W2));
         vodTitle = Ui.oneLine(Ui.title(this, "", 34));
@@ -257,6 +259,7 @@ public class PlayerActivity extends Activity implements Engine.Listener, PlayerT
         controls.setGravity(Gravity.CENTER_VERTICAL);
         controls.setClipChildren(false);
         controls.setPadding(0, Ui.dp(this, 14), 0, 0);
+        controls.setClipToPadding(false);
         settingsCircle = new FrameLayout(this);
         settingsIcon = new Icon(this, Icon.Kind.SETTINGS, Ui.W1);
         int ip = Ui.dp(this, 12);

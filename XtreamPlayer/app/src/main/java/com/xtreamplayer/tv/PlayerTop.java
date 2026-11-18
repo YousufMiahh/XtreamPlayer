@@ -42,10 +42,16 @@ final class PlayerTop extends FrameLayout {
         setPadding(Ui.dp(c, 72), Ui.dp(c, 44), Ui.dp(c, 72), Ui.dp(c, 70));
         setVisibility(GONE);
 
+        setClipChildren(false); // a highlighted button grows a little: never cut it off
+        setClipToPadding(false);
         LinearLayout left = new LinearLayout(c);
         left.setOrientation(LinearLayout.VERTICAL);
+        left.setClipChildren(false);
+        left.setClipToPadding(false);
         row = new LinearLayout(c);
         row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setClipChildren(false);
+        row.setClipToPadding(false);
         left.addView(row);
         label = Ui.medium(c, "", 15, Ui.W1);
         label.setTypeface(Ui.semibold());
@@ -85,6 +91,7 @@ final class PlayerTop extends FrameLayout {
         Context c = getContext();
         for (int i = 0; i < shown.size(); i++) {
             FrameLayout b = new FrameLayout(c);
+            b.setClipChildren(false);
             Icon ic = new Icon(c, ICONS[shown.get(i)], Ui.W1);
             int pad = Ui.dp(c, 13);
             ic.setPadding(pad, pad, pad, pad);
