@@ -437,7 +437,7 @@ public class PlayerActivity extends Activity implements Engine.Listener, PlayerT
         if (isLive()) Coach.show(this, "player_live", true, new Coach.Step(null, "Watching Live TV",
                 "▲ ▼  Change channel\nOK  Channel list\n◀ ▶  Channel info\n" + menu + "  Favourite, subtitles & audio\nBack  Leave"));
         else Coach.show(this, "player_vod", true, new Coach.Step(null, "Watching films & series",
-                "OK  Pause / play\n◀  Back 5 seconds     ▶  Forward 10 seconds (press again to go further)\n▼  Scrub: move the knob with ◀ ▶, OK to jump there\n" + menu + "  Subtitles, audio, picture & favourite\nBack  Leave — your place is saved"));
+                "OK  Pause / play\n◀  Back 5 seconds     ▶  Forward 10 seconds (press again to go further)\n▲  Back, Play From Beginning, Next Episode, Episodes\n▼  Settings; ▲ from there to scrub along the bar (◀ ▶, OK to jump there)\n" + menu + "  Subtitles, audio, picture & favourite\nBack  Leave — your place is saved"));
         Async.MAIN.post(ticker);
         Async.MAIN.postDelayed(watchdog, 1000);
     }
