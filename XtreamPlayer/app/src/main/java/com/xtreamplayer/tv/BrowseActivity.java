@@ -79,10 +79,6 @@ public class BrowseActivity extends Activity implements TopBar.Reselect {
     private FrameLayout infoProgress;
 
     private Item currentCat;
-    /** Movies / Series: details beside the poster you rest on. */
-    private final PosterPeek peek = new PosterPeek(this, new PosterPeek.CanShow() {
-        public boolean now() { return content != null && content.hasFocus() && !live; }
-    });
     private int loadToken = 0;
     private final Runnable pendingCat = new Runnable() { public void run() { openSelectedCategory(); } };
     private final Runnable pendingEpg = new Runnable() { public void run() { loadEpgForSelection(); } };
@@ -432,9 +428,8 @@ public class BrowseActivity extends Activity implements TopBar.Reselect {
                 Adapters.refresh(content);
                 if (pos >= 0 && pos < contentAdapter.getCount()) Ambient.tint(BrowseActivity.this, contentAdapter.getItem(pos).icon);
                 if (live) showChannelInfo(pos);
-                else if (pos >= 0 && pos < contentAdapter.getCount()) peek.selected(v, contentAdapter.getItem(pos)); // details beside it after a moment
             }
-            public void onNothingSelected(AdapterView<?> p) { Adapters.refresh(content); peek.hide(); }
+            public void onNothingSelected(AdapterView<?> p) { Adapters.refresh(content); }
         });
     }
 
@@ -904,7 +899,6 @@ public class BrowseActivity extends Activity implements TopBar.Reselect {
      */
     @Override
     public boolean dispatchKeyEvent(KeyEvent e) {
-        if (e.getAction() == KeyEvent.ACTION_DOWN) peek.hide(); // any key: the details go (the next poster brings its own)
         // ▶ from the categories always goes to the top of the list (first channel / poster),
         // not whatever happens to be level with the category
         if (e.getAction() == KeyEvent.ACTION_DOWN && e.getKeyCode() == KeyEvent.KEYCODE_DPAD_RIGHT && catList.hasFocus()) {
@@ -981,7 +975,6 @@ public class BrowseActivity extends Activity implements TopBar.Reselect {
 
     @Override
     protected void onPause() {
-        peek.hide();
         resumed = false;
         releasePreview(); // free the connection before the full-screen player starts
         super.onPause();

@@ -28,7 +28,9 @@ final class HomePeek {
     private LinearLayout card;     // the one that's widened (or about to)
     private int baseW;
     private FrameLayout host;
-    private ValueAnimator anim;
+    /** Each card's own width animation and normal width: moving on quickly must shrink every one back. */
+    private final java.util.WeakHashMap<View, ValueAnimator> anims = new java.util.WeakHashMap<>();
+    private final java.util.WeakHashMap<View, Integer> normalW = new java.util.WeakHashMap<>();
     private boolean active = true;
 
     HomePeek(Activity a, Prefs prefs, XtreamApi api, View root) {
@@ -60,9 +62,11 @@ final class HomePeek {
             if (card == null || !active || !card.hasFocus() && !card.isFocused()) return;
             final View art = card.getChildAt(0);
             ViewGroup.LayoutParams lp = art.getLayoutParams();
-            baseW = lp.width;
+            Integer known = normalW.get(card);
+            baseW = known != null ? known : lp.width; // not a width caught half way through shrinking
+            normalW.put(card, baseW);
             int target = Math.round(lp.height * 16f / 9f);
-            if (target > baseW + 4) animateWidth(baseW, target, null);
+            if (target > baseW + 4) animateWidth(lp.width, target, card);
             dress(card);
             Async.MAIN.postDelayed(play, PLAY_AFTER_MS);
         }
@@ -148,8 +152,9 @@ final class HomePeek {
         if (card != null) {
             View art = card.getChildAt(0);
             int w = art.getLayoutParams().width;
+            ValueAnimator running = anims.remove(card);
+            if (running != null) running.cancel();
             if (baseW > 0 && w != baseW) {
-                if (anim != null) anim.cancel();
                 if (animate) animateWidth(w, baseW, card);
                 else setWidth(card, baseW);
             }
@@ -228,8 +233,11 @@ final class HomePeek {
 
     private void animateWidth(int from, int to, final LinearLayout target) {
         final LinearLayout c = target != null ? target : card;
-        if (anim != null) anim.cancel();
-        anim = ValueAnimator.ofInt(from, to);
+        if (c == null) return;
+        ValueAnimator old = anims.remove(c);
+        if (old != null) old.cancel();
+        final ValueAnimator anim = ValueAnimator.ofInt(from, to);
+        anims.put(c, anim);
         anim.setDuration(Ui.ANIM_MS + 60);
         anim.setInterpolator(Ui.EASE);
         anim.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
@@ -237,6 +245,9 @@ final class HomePeek {
                 setWidth(c, (Integer) v.getAnimatedValue());
                 if (c.isFocused()) c.requestRectangleOnScreen(new Rect(0, 0, c.getWidth(), c.getHeight()), true);
             }
+        });
+        anim.addListener(new android.animation.AnimatorListenerAdapter() {
+            @Override public void onAnimationEnd(android.animation.Animator x) { if (anims.get(c) == anim) anims.remove(c); }
         });
         anim.start();
     }
