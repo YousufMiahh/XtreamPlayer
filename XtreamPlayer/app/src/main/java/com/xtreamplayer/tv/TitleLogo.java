@@ -30,7 +30,7 @@ final class TitleLogo {
         view.setVisibility(View.GONE);
         ViewGroup parent = (ViewGroup) title.getParent();
         parent.addView(view, parent.indexOfChild(title), new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        load(kind, name, tmdb);
+        if (new Prefs(a).darkTheme()) load(kind, name, tmdb); // logos are made for dark backgrounds
     }
 
     private void load(final String kind, final String name, final String tmdb) {
