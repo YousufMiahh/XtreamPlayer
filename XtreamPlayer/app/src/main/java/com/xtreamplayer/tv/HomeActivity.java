@@ -92,6 +92,7 @@ public class HomeActivity extends Activity {
 
     @Override
     protected void onPause() {
+        Sync.removeListener(synced);
         super.onPause();
         if (peek != null) peek.pause();
     }
@@ -199,7 +200,16 @@ public class HomeActivity extends Activity {
         }
         resumedOnce = true;
         TopBar.onHomeResumed(this, localRows, remoteRows, empty);
+        Sync.addListener(synced);
     }
+
+    /** Another device changed something (Continue Watching, favourites…): show it, keeping your place. */
+    private final Sync.Listener synced = new Sync.Listener() {
+        public void changed() {
+            if (isFinishing()) return;
+            refreshKeepingPlace(getCurrentFocus());
+        }
+    };
 
     private boolean isInside(View v, View parent) {
         for (Object p = v; p instanceof View; p = ((View) p).getParent()) if (p == parent) return true;

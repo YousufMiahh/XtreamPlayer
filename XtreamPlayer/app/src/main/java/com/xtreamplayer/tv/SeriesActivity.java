@@ -31,6 +31,7 @@ public class SeriesActivity extends Activity {
 
     private ImageView backdrop;
     private TextView title, meta, plot, epLabel;
+    private TitleLogo logo;
     private LinearLayout buttons, seasonRow, episodeRow;
     private HorizontalScrollView episodeScroll, seasonScroll;
     private View playBtn;
@@ -105,6 +106,7 @@ public class SeriesActivity extends Activity {
         info.addView(epLabel);
         info.addView(plot);
         info.addView(buttons);
+        logo = new TitleLogo(this, title, Tmdb.TV, series.name, series.tmdb, 520, 130);
         LinearLayout.LayoutParams ilp = new LinearLayout.LayoutParams(Ui.dp(this, 960), 0, 1);
         page.addView(info, ilp);
 
@@ -305,6 +307,7 @@ public class SeriesActivity extends Activity {
     private void showRows(boolean firstSeason) {
         if (seasons.isEmpty()) return;
         rowsShown = true;
+        logo.setSmall(true);
         buttons.setVisibility(View.GONE);
         plot.setVisibility(View.GONE);
         Async.MAIN.removeCallbacks(startPreview);
@@ -337,6 +340,7 @@ public class SeriesActivity extends Activity {
 
     private void hideRows() {
         rowsShown = false;
+        logo.setSmall(false);
         seasonScroll.setVisibility(View.GONE);
         episodeScroll.setVisibility(View.GONE);
         buttons.setVisibility(View.VISIBLE);

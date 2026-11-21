@@ -48,6 +48,18 @@ public class App extends Application {
         }
         // Get VLC ready in the background so the first channel opens first time.
         if (new Prefs(this).engineMode() != 1) VlcHolder.warmUp(this);
+        // Watch data shared with your other devices: after changes, on coming back, on leaving.
+        Sync.start(this);
+        registerActivityLifecycleCallbacks(new ActivityLifecycleCallbacks() {
+            int started;
+            public void onActivityCreated(android.app.Activity a, android.os.Bundle b) {}
+            public void onActivityStarted(android.app.Activity a) { if (started++ == 0) Sync.resumed(); }
+            public void onActivityResumed(android.app.Activity a) {}
+            public void onActivityPaused(android.app.Activity a) {}
+            public void onActivityStopped(android.app.Activity a) { if (--started == 0) Sync.now(); }
+            public void onActivitySaveInstanceState(android.app.Activity a, android.os.Bundle b) {}
+            public void onActivityDestroyed(android.app.Activity a) {}
+        });
     }
 
     static void writeCrash(Context c, Throwable e) {

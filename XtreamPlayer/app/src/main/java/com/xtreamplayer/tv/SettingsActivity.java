@@ -58,6 +58,8 @@ public class SettingsActivity extends Activity {
         loadStatus();
     }
 
+    private TextView syncValue;
+
     private void build() {
         list.removeAllViews();
         section("Accounts");
@@ -84,6 +86,25 @@ public class SettingsActivity extends Activity {
                 public void run(TextView v) { confirmRemove(cur); }
             });
         }
+
+        section("Sync");
+        row("Sync With Your Other Devices", prefs.syncEnabled() ? "On" : "Off", new Action() {
+            public void run(TextView v) {
+                prefs.setSyncEnabled(!prefs.syncEnabled());
+                v.setText(prefs.syncEnabled() ? "On" : "Off");
+                if (syncValue != null) syncValue.setText(Sync.label(SettingsActivity.this));
+                if (prefs.syncEnabled()) Sync.soon(300);
+            }
+        });
+        syncValue = row("Sync Now", Sync.label(this), new Action() {
+            public void run(final TextView v) {
+                if (!Sync.configured() || !prefs.syncEnabled()) return;
+                v.setText("Syncing…");
+                Sync.now(new Runnable() {
+                    public void run() { v.setText(Sync.label(SettingsActivity.this)); }
+                });
+            }
+        });
 
         section("Appearance");
         row("Theme", prefs.darkTheme() ? "Dark" : "Light", new Action() {

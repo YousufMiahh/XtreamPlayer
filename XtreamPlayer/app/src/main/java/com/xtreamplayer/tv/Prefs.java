@@ -138,7 +138,8 @@ public class Prefs {
 
     private static boolean isAccountData(String k) {
         return k.startsWith("fav_") || k.startsWith("pos_") || k.startsWith("dur_") || k.startsWith("hist_") || k.startsWith("lib_time")
-                || k.equals("watched") || k.equals("queue") || k.equals("upnext") || k.startsWith("catname_") || k.startsWith("pic_");
+                || k.equals("watched") || k.equals("queue") || k.equals("upnext") || k.startsWith("catname_") || k.startsWith("pic_")
+                || k.startsWith("favcat_") || k.startsWith("hide_") || k.startsWith("show_cat_") || k.equals("rec_block") || k.startsWith("adelay_");
     }
 
     /** Key prefix for the current account's data ("" for the original account, so old data keeps working). */
@@ -289,6 +290,10 @@ public class Prefs {
     public int previewMode() { return sp.getInt("preview", 2); } // on with sound unless changed in Settings
     public void setPreviewMode(int m) { sp.edit().putInt("preview", m).apply(); }
     /** Film / series previews (Home cards and the page behind Resume): 1 on, 0 off. */
+    /** Sync watch data with your other devices (on unless turned off in Settings). */
+    public boolean syncEnabled() { return sp.getBoolean("cloud_sync", true); }
+    public void setSyncEnabled(boolean b) { sp.edit().putBoolean("cloud_sync", b).apply(); }
+
     public int homePreviews() { return sp.getInt("home_previews", 1); }
     public void setHomePreviews(int m) { sp.edit().putInt("home_previews", m).apply(); }
 
@@ -303,6 +308,12 @@ public class Prefs {
 
     private static final Map<String, List<Item>> FAV_CACHE = new HashMap<>();
     private static final Set<String> FAV_KEYS = new HashSet<>();
+
+    /** Favourites changed from outside (sync with another device): forget the cached copies. */
+    static void favsChanged() {
+        FAV_CACHE.clear();
+        FAV_KEYS.clear();
+    }
 
     private List<Item> loadFavs(String type) {
         String ck = ns() + type;

@@ -130,4 +130,49 @@ final class Tmdb {
         }
         return out;
     }
+
+    /**
+     * The title's logo (the transparent artwork Netflix and Apple TV show instead of the name), as an
+     * image URL, or null. English first, then one with no words; remembered per title.
+     */
+    static String logo(Context c, String kind, String id) {
+        if (id == null || id.isEmpty()) return null;
+        SharedPreferences sp = cache(c);
+        String ck = "logo:" + kind + ":" + id;
+        if (sp.contains(ck)) {
+            String v = sp.getString(ck, "");
+            return v.isEmpty() ? null : v;
+        }
+        String url;
+        try {
+            url = pickLogo(get("/" + kind + "/" + id + "/images?include_image_language=en,null").optJSONArray("logos"));
+        } catch (Exception e) {
+            return null; // offline: try again next time
+        }
+        sp.edit().putString(ck, url == null ? "" : url).apply();
+        return url;
+    }
+
+    /** Best of TMDB's logos: English (most liked) before language-free; SVGs asked for as PNG. */
+    static String pickLogo(JSONArray logos) {
+        if (logos == null) return null;
+        JSONObject best = null;
+        int bestRank = 9;
+        double bestVote = -1;
+        for (int i = 0; i < logos.length(); i++) {
+            JSONObject l = logos.optJSONObject(i);
+            if (l == null || l.optString("file_path", "").isEmpty()) continue;
+            String lang = l.isNull("iso_639_1") ? "" : l.optString("iso_639_1", "");
+            int rank = "en".equals(lang) ? 0 : lang.isEmpty() ? 1 : 9;
+            if (rank == 9) continue;
+            double vote = l.optDouble("vote_average", 0);
+            if (rank < bestRank || (rank == bestRank && vote > bestVote)) {
+                best = l;
+                bestRank = rank;
+                bestVote = vote;
+            }
+        }
+        if (best == null) return null;
+        return "https://image.tmdb.org/t/p/w500" + best.optString("file_path").replaceFirst("(?i)\\.svg$", ".png");
+    }
 }

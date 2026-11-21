@@ -81,6 +81,7 @@ public class MovieActivity extends Activity {
         col.addView(meta);
         col.addView(plot);
         col.addView(credits);
+        new TitleLogo(this, title, Tmdb.MOVIE, movie.name, movie.tmdb, 560, 150);
 
         buttons = new LinearLayout(this);
         buttons.setOrientation(LinearLayout.VERTICAL); // Netflix: Resume / Play From Beginning, stacked
