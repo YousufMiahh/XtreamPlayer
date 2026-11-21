@@ -24,9 +24,9 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 
 /**
- * The launch animation: the logo builds itself. The tile springs in, the Y flies in from the left
- * and the M from the right (with a fading trail), they lock together with a flash and a ring, the
- * play button pops up and a sweep of light crosses the tile.
+ * The launch logo. NameIntro brings "YOUSUF MIAH" down to its Y and M and lands them here, then
+ * lock() builds the rest: the tile springs up behind them with a punch and a ring, the play button
+ * pops up and a sweep of light crosses the tile. (play() is the older fly-in version.)
  */
 final class LogoIntro extends FrameLayout {
     static final long TEXT_AT_MS = 1050; // when the name underneath can come in
@@ -181,6 +181,66 @@ final class LogoIntro extends FrameLayout {
         set.start();
 
         if (text != null) postDelayed(text, TEXT_AT_MS);
+    }
+
+    float letterPx() { return size * 0.5f; }
+    View y() { return y; }
+    View m() { return m; }
+
+    /**
+     * The name's Y and M have just landed on this logo's letters (NameIntro): show them, spring the
+     * tile up behind them with a punch, a ring of light, the play button and a sweep of shine.
+     * `text` brings in the name underneath.
+     */
+    void lock(final Runnable text) {
+        y.setAlpha(1f);
+        m.setAlpha(1f);
+        tile.setScaleX(0.35f);
+        tile.setScaleY(0.35f);
+        tile.setRotation(-14f);
+        ObjectAnimator tileIn = ObjectAnimator.ofPropertyValuesHolder(tile,
+                PropertyValuesHolder.ofFloat(ALPHA, 0f, 1f),
+                PropertyValuesHolder.ofFloat(SCALE_X, 0.35f, 1f),
+                PropertyValuesHolder.ofFloat(SCALE_Y, 0.35f, 1f),
+                PropertyValuesHolder.ofFloat(ROTATION, -14f, 0f));
+        tileIn.setDuration(620);
+        tileIn.setInterpolator(new OvershootInterpolator(1.6f));
+        AnimatorSet set = new AnimatorSet();
+        set.play(tileIn);
+        ObjectAnimator punch = ObjectAnimator.ofPropertyValuesHolder(tile,
+                PropertyValuesHolder.ofFloat(SCALE_X, 1f, 1.08f, 1f),
+                PropertyValuesHolder.ofFloat(SCALE_Y, 1f, 1.08f, 1f));
+        punch.setDuration(360);
+        punch.setStartDelay(640);
+        set.play(punch).with(tileIn);
+        ObjectAnimator ringOut = ObjectAnimator.ofPropertyValuesHolder(ring,
+                PropertyValuesHolder.ofFloat(ALPHA, 0.95f, 0f),
+                PropertyValuesHolder.ofFloat(SCALE_X, 0.4f, 5f),
+                PropertyValuesHolder.ofFloat(SCALE_Y, 0.4f, 5f));
+        ringOut.setDuration(620);
+        ringOut.setStartDelay(380);
+        ringOut.setInterpolator(new DecelerateInterpolator(1.6f));
+        set.play(ringOut).with(tileIn);
+        play.setScaleX(0f);
+        play.setScaleY(0f);
+        ObjectAnimator pop = ObjectAnimator.ofPropertyValuesHolder(play,
+                PropertyValuesHolder.ofFloat(ALPHA, 0f, 1f),
+                PropertyValuesHolder.ofFloat(SCALE_X, 0f, 1f),
+                PropertyValuesHolder.ofFloat(SCALE_Y, 0f, 1f),
+                PropertyValuesHolder.ofFloat(TRANSLATION_Y, size / 19f, 0f));
+        pop.setDuration(480);
+        pop.setStartDelay(420);
+        pop.setInterpolator(new OvershootInterpolator(3f));
+        set.play(pop).with(tileIn);
+        float sw = size * 0.4f;
+        shine.setTranslationX(-sw * 1.6f);
+        ObjectAnimator sweep = ObjectAnimator.ofFloat(shine, TRANSLATION_X, -sw * 1.6f, size + sw);
+        sweep.setDuration(800);
+        sweep.setStartDelay(650);
+        sweep.setInterpolator(new PathInterpolator(0.45f, 0f, 0.55f, 1f));
+        set.play(sweep).with(tileIn);
+        set.start();
+        if (text != null) postDelayed(text, 450);
     }
 
     /** A letter (or its trail) flying in from `from`, overshooting a touch, then settling. */

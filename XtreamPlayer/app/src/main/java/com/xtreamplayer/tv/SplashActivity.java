@@ -16,7 +16,7 @@ import java.io.InputStream;
 
 /** A brief branded screen on launch, then on to the app. */
 public class SplashActivity extends Activity {
-    private static final long SHOW_MS = 2300, MAX_WAIT_MS = 6000; // the logo intro, then on
+    private static final long SHOW_MS = NameIntro.TOTAL_MS + 300, MAX_WAIT_MS = 6000; // the name-to-logo intro, then on
     private boolean left, shownLongEnough, libraryReady, introStarted;
     private Runnable startIntro;
 
@@ -43,8 +43,14 @@ public class SplashActivity extends Activity {
         Ui.init(this);
         Ambient.install(this, Ambient.HOME);
 
-        FrameLayout root = new FrameLayout(this);
+        final FrameLayout root = new FrameLayout(this);
         root.setClipChildren(false);
+        // dark, with a glow in the middle, for "YOUSUF MIAH"
+        android.graphics.drawable.GradientDrawable glow = new android.graphics.drawable.GradientDrawable(
+                android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0xFF1A1240, 0xFF07060F, 0xFF030308});
+        glow.setGradientType(android.graphics.drawable.GradientDrawable.RADIAL_GRADIENT);
+        glow.setGradientRadius(getResources().getDisplayMetrics().widthPixels * 0.62f);
+        root.setBackground(glow);
         LinearLayout col = new LinearLayout(this);
         col.setOrientation(LinearLayout.VERTICAL);
         col.setGravity(Gravity.CENTER_HORIZONTAL);
@@ -53,7 +59,7 @@ public class SplashActivity extends Activity {
         root.addView(col, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER));
 
         int s = Ui.dp(this, 190);
-        final LogoIntro logo = new LogoIntro(this, s); // the Y flies in from the left, the M from the right
+        final LogoIntro logo = new LogoIntro(this, s); // "YOUSUF MIAH" folds into its Y and M, which land here
         col.addView(logo, new LinearLayout.LayoutParams(s, s));
 
         TextView name = Ui.title(this, "YM Player", 40);
@@ -61,6 +67,8 @@ public class SplashActivity extends Activity {
         name.setGravity(Gravity.CENTER);
         col.addView(name, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         TextView by = Ui.medium(this, "Developed by Yousuf Miah", 18, Ui.TEXT2);
+        name.setTextColor(0xFFFFFFFF); // on the dark intro whatever the theme
+        by.setTextColor(0x99FFFFFF);
         by.setGravity(Gravity.CENTER); // full width, so the whole credit always fits on one line
         col.addView(by, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
@@ -83,7 +91,7 @@ public class SplashActivity extends Activity {
                         if (libraryReady) next.run();
                     }
                 }, SHOW_MS);
-                logo.play(new Runnable() {
+                NameIntro.play(root, logo, new Runnable() {
                     public void run() {
                         nameF.animate().alpha(1f).translationY(0f).setDuration(500).setInterpolator(ease).start();
                         byF.animate().alpha(1f).setStartDelay(250).setDuration(450).start();

@@ -2,3 +2,4 @@
 - Film and series pages show the title's logo, like Netflix. On a series it shrinks out of the way when the seasons come up.
 - Recent Channels: take a channel off the list one at a time (☰ or hold OK on it, on Home or in Live TV → Recent Channels). It comes off your other devices too.
 - Home: the film or series you're on widens straight away, like Netflix, showing its picture and logo, and starts playing a preview almost at once. Move along and the next one widens straight away.
+- A new launch intro: "YOUSUF MIAH" folds away into its Y and M, which land in the logo.
