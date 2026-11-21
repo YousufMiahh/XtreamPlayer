@@ -22,8 +22,22 @@ public final class ImageLoader {
             return Math.max(1, value.getByteCount() / 1024);
         }
     };
-    private static final Set<String> FAILED = Collections.synchronizedSet(new HashSet<String>());
-    private static final ExecutorService POOL = Executors.newFixedThreadPool(4);
+    /**
+     * Images that just failed, and when. A failure is only remembered for a short while (servers
+     * have blips, or are briefly too busy), so the picture is tried again later instead of
+     * staying blank for the rest of the session.
+     */
+    private static final java.util.Map<String, Long> FAILED = Collections.synchronizedMap(new java.util.HashMap<String, Long>());
+    private static final long RETRY_MS = 45_000;
+    private static final ExecutorService POOL = Executors.newFixedThreadPool(6);
+
+    private static boolean failedRecently(String url) {
+        Long t = FAILED.get(url);
+        if (t == null) return false;
+        if (System.currentTimeMillis() - t < RETRY_MS) return true;
+        FAILED.remove(url);
+        return false;
+    }
     private static String userAgent = Prefs.DEFAULT_UA;
 
     public static void setUserAgent(String ua) { userAgent = ua; }
@@ -34,7 +48,7 @@ public final class ImageLoader {
 
     /** Main colour of an image (ignores transparent and near-white/black pixels). */
     public static void color(final String url, final ColorCallback cb) {
-        if (url == null || url.isEmpty() || FAILED.contains(url)) return;
+        if (url == null || url.isEmpty() || failedRecently(url)) return;
         Integer known = COLORS.get(url);
         if (known != null) {
             cb.color(known);
@@ -92,13 +106,13 @@ public final class ImageLoader {
 
     /** Loads an image into the cache without a view, then runs done on the main thread. */
     public static void prefetch(final String url, final int reqW, final int reqH, final Runnable done) {
-        if (url == null || url.isEmpty() || FAILED.contains(url) || CACHE.get(url) != null) return;
+        if (url == null || url.isEmpty() || failedRecently(url) || CACHE.get(url) != null) return;
         POOL.execute(new Runnable() {
             public void run() {
                 if (CACHE.get(url) != null) return;
                 Bitmap bm = fetch(url, reqW, reqH);
                 if (bm == null) {
-                    FAILED.add(url);
+                    FAILED.put(url, System.currentTimeMillis());
                     return;
                 }
                 CACHE.put(url, bm);
@@ -107,30 +121,65 @@ public final class ImageLoader {
         });
     }
 
-    public static void load(final ImageView view, final String url, final int reqW, final int reqH) {
+    private static final java.util.Map<String, Integer> TRIES = Collections.synchronizedMap(new java.util.HashMap<String, Integer>());
+
+    /**
+     * Still blank after both goes (the network wasn't up yet, or the image server is busy): try
+     * again a little later while the card is on screen, a few times, instead of staying empty.
+     */
+    private static void retryLater(final ImageView view, final String url, final int reqW, final int reqH, final android.view.View fallback) {
+        Integer n = TRIES.get(url);
+        if (n != null && n >= 4) return;
+        TRIES.put(url, n == null ? 1 : n + 1);
+        Async.MAIN.postDelayed(new Runnable() {
+            public void run() {
+                if (url.equals(view.getTag()) && view.isAttachedToWindow() && view.getDrawable() == null) load(view, url, reqW, reqH, fallback);
+            }
+        }, RETRY_MS + 1000);
+    }
+
+    public static void load(final ImageView view, final String url, final int reqW, final int reqH) { load(view, url, reqW, reqH, null); }
+
+    /**
+     * @param fallback shown until the picture arrives, and kept if it can't be loaded (e.g. the
+     *                 title in place of a missing poster). Hidden once the picture is in.
+     */
+    public static void load(final ImageView view, final String url, final int reqW, final int reqH, final android.view.View fallback) {
         view.setTag(url);
-        if (url == null || url.isEmpty() || FAILED.contains(url)) {
+        if (fallback != null) fallback.setVisibility(android.view.View.VISIBLE);
+        if (url == null || url.isEmpty() || failedRecently(url)) {
             view.setImageDrawable(null);
             return;
         }
         Bitmap cached = CACHE.get(url);
         if (cached != null) {
             view.setImageBitmap(cached);
+            if (fallback != null) fallback.setVisibility(android.view.View.GONE);
             return;
         }
         view.setImageDrawable(null);
         POOL.execute(new Runnable() {
             public void run() {
                 if (!url.equals(view.getTag())) return; // view was recycled for another row
-                final Bitmap bm = fetch(url, reqW, reqH);
-                if (bm == null) {
-                    FAILED.add(url);
+                Bitmap got = CACHE.get(url); // another card may have fetched it meanwhile
+                if (got == null) got = fetch(url, reqW, reqH);
+                if (got == null) {
+                    try { Thread.sleep(1200); } catch (InterruptedException ignored) { }
+                    if (!url.equals(view.getTag())) return;
+                    got = fetch(url, reqW, reqH); // one more go: often just a blip
+                }
+                if (got == null) {
+                    FAILED.put(url, System.currentTimeMillis());
+                    retryLater(view, url, reqW, reqH, fallback);
                     return;
                 }
+                final Bitmap bm = got;
                 CACHE.put(url, bm);
                 Async.MAIN.post(new Runnable() {
                     public void run() {
-                        if (url.equals(view.getTag())) view.setImageBitmap(bm);
+                        if (!url.equals(view.getTag())) return;
+                        view.setImageBitmap(bm);
+                        if (fallback != null) fallback.setVisibility(android.view.View.GONE);
                     }
                 });
             }
@@ -139,7 +188,7 @@ public final class ImageLoader {
 
     private static Bitmap fetch(String url, int reqW, int reqH) {
         try {
-            byte[] data = Http.bytes(url, userAgent);
+            byte[] data = Http.bytes(url, userAgent, 8000, 15000); // a stuck image server mustn't hold up the rest
             BitmapFactory.Options o = new BitmapFactory.Options();
             o.inJustDecodeBounds = true;
             BitmapFactory.decodeByteArray(data, 0, data.length, o);
@@ -148,7 +197,11 @@ public final class ImageLoader {
             BitmapFactory.Options d = new BitmapFactory.Options();
             d.inSampleSize = sample;
             d.inPreferredConfig = Bitmap.Config.RGB_565;
-            return BitmapFactory.decodeByteArray(data, 0, data.length, d);
+            Bitmap b = BitmapFactory.decodeByteArray(data, 0, data.length, d);
+            if (b == null) { // some images only decode with the default settings
+                b = BitmapFactory.decodeByteArray(data, 0, data.length);
+            }
+            return b;
         } catch (Throwable t) {
             return null;
         }

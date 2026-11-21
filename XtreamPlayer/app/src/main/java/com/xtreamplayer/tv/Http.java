@@ -10,11 +10,13 @@ import java.net.URL;
 public final class Http {
     private Http() {}
 
-    public static HttpURLConnection open(String url, String userAgent) throws IOException {
+    public static HttpURLConnection open(String url, String userAgent) throws IOException { return open(url, userAgent, 15000, 45000); }
+
+    public static HttpURLConnection open(String url, String userAgent, int connectMs, int readMs) throws IOException {
         for (int i = 0; i < 6; i++) {
             HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
-            c.setConnectTimeout(15000);
-            c.setReadTimeout(45000);
+            c.setConnectTimeout(connectMs);
+            c.setReadTimeout(readMs);
             c.setInstanceFollowRedirects(false);
             c.setRequestProperty("User-Agent", userAgent);
             c.setRequestProperty("Accept", "*/*");
@@ -35,8 +37,10 @@ public final class Http {
         throw new IOException("Too many redirects");
     }
 
-    public static byte[] bytes(String url, String userAgent) throws IOException {
-        HttpURLConnection c = open(url, userAgent);
+    public static byte[] bytes(String url, String userAgent) throws IOException { return bytes(url, userAgent, 15000, 45000); }
+
+    public static byte[] bytes(String url, String userAgent, int connectMs, int readMs) throws IOException {
+        HttpURLConnection c = open(url, userAgent, connectMs, readMs);
         try (InputStream in = c.getInputStream()) {
             ByteArrayOutputStream out = new ByteArrayOutputStream();
             byte[] buf = new byte[16384];
