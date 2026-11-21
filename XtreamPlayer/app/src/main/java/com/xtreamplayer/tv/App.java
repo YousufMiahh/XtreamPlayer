@@ -56,7 +56,7 @@ public class App extends Application {
             public void onActivityStarted(android.app.Activity a) { if (started++ == 0) Sync.resumed(); }
             public void onActivityResumed(android.app.Activity a) {}
             public void onActivityPaused(android.app.Activity a) {}
-            public void onActivityStopped(android.app.Activity a) { if (--started == 0) Sync.now(); }
+            public void onActivityStopped(android.app.Activity a) { if (--started == 0) Sync.left(); }
             public void onActivitySaveInstanceState(android.app.Activity a, android.os.Bundle b) {}
             public void onActivityDestroyed(android.app.Activity a) {}
         });

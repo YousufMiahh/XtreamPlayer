@@ -26,7 +26,7 @@ import java.util.concurrent.Executors;
  * that use the same login. Format and encryption: SyncCore. Server: Supabase (two functions).
  *
  * Runs after a change (a few seconds later, so many changes become one), while playing (every
- * 20 seconds at most), when the app comes back to the front, and every 5 minutes.
+ * 20 seconds at most), whenever the app comes to the front, and every 30 seconds while it's open.
  */
 final class Sync {
     private Sync() {}
@@ -70,17 +70,18 @@ final class Sync {
                     if (k.matches("^a\\d+_.*")) return;
                     rest = k;
                 }
-                if (rest.startsWith("pos_") || rest.startsWith("dur_")) later();
+                if (rest.startsWith("pos_") && !sp.contains(k)) soon(4000); // removed from Continue Watching
+                else if (rest.startsWith("pos_") || rest.startsWith("dur_")) later();
                 else if (isSynced(rest)) soon(4000);
             }
         };
         p.raw().registerOnSharedPreferenceChangeListener(watcher);
         Async.MAIN.postDelayed(new Runnable() {
             public void run() {
-                now();
-                Async.MAIN.postDelayed(this, 5 * 60000);
+                if (foreground) now(); // another device's changes show within half a minute
+                Async.MAIN.postDelayed(this, 30000);
             }
-        }, 5 * 60000);
+        }, 30000);
     }
 
     private static boolean isSynced(String k) {
@@ -104,10 +105,18 @@ final class Sync {
         soon(20000);
     }
 
-    /** When the app comes to the front: sync unless it just did. */
+    private static boolean foreground;
+
+    /** The app came to the front: get what other devices changed straight away. */
     static void resumed() {
-        Long last = lastOk();
-        if (last == null || System.currentTimeMillis() - last > 60000) soon(500);
+        foreground = true;
+        soon(300);
+    }
+
+    /** The app went to the back: send what's changed here now. */
+    static void left() {
+        foreground = false;
+        now();
     }
 
     static void addListener(Listener l) { LISTENERS.add(l); }
