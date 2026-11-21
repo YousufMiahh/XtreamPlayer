@@ -62,6 +62,7 @@ final class Sync {
         watcher = new SharedPreferences.OnSharedPreferenceChangeListener() {
             public void onSharedPreferenceChanged(SharedPreferences sp, String k) {
                 if (k == null || System.currentTimeMillis() < quietUntil) return;
+                if (isSetting(k)) { soon(4000); return; } // subtitle style, languages, Home rows
                 String n = p.ns(), rest;
                 if (!n.isEmpty()) {
                     if (!k.startsWith(n)) return;
@@ -82,6 +83,40 @@ final class Sync {
                 Async.MAIN.postDelayed(this, 30000);
             }
         }, 30000);
+    }
+
+    // ================================================================ settings shared too (not per account)
+
+    private static final String[] INT_SETTINGS = {"sub_size", "sub_color", "sub_bg_opacity"};
+    private static final String[] STR_SETTINGS = {"sub_lang", "audio_lang"};
+
+    private static boolean isSetting(String k) {
+        return Arrays.asList(INT_SETTINGS).contains(k) || Arrays.asList(STR_SETTINGS).contains(k) || k.equals("sub_bg")
+                || (k.startsWith("home_") && Arrays.asList(Prefs.HOME_KEYS).contains(k.substring(5)));
+    }
+
+    /** Only ones set on this device (a default here mustn't replace a choice made on another device). */
+    private static JSONObject readSettings(SharedPreferences sp) throws Exception {
+        JSONObject out = new JSONObject();
+        for (String k : INT_SETTINGS) if (sp.contains(k)) out.put(k, new JSONObject().put("v", sp.getInt(k, 0)));
+        for (String k : STR_SETTINGS) if (sp.contains(k)) out.put(k, new JSONObject().put("v", sp.getString(k, "")));
+        if (sp.contains("sub_bg")) out.put("sub_bg", new JSONObject().put("v", sp.getBoolean("sub_bg", false)));
+        for (String h : Prefs.HOME_KEYS) if (sp.contains("home_" + h)) out.put("home_" + h, new JSONObject().put("v", sp.getBoolean("home_" + h, true)));
+        return out;
+    }
+
+    private static void writeSettings(SharedPreferences.Editor e, JSONObject next, JSONObject prev) {
+        if (next == null) return;
+        for (String k : SyncCore.keys(next)) {
+            if (!isSetting(k)) continue;
+            Object v = next.optJSONObject(k) == null ? null : next.optJSONObject(k).opt("v");
+            if (v == null) continue;
+            JSONObject p = prev == null ? null : prev.optJSONObject(k);
+            if (p != null && String.valueOf(p.opt("v")).equals(String.valueOf(v))) continue;
+            if (v instanceof Boolean) e.putBoolean(k, (Boolean) v);
+            else if (v instanceof Number) e.putInt(k, ((Number) v).intValue());
+            else e.putString(k, String.valueOf(v));
+        }
     }
 
     private static boolean isSynced(String k) {
@@ -371,6 +406,7 @@ final class Sync {
             JSONObject it = q.optJSONObject(i);
             if (it != null) st.getJSONObject("queue").put(it.optString("type") + ":" + it.optString("id"), new JSONObject().put("o", i).put("i", it));
         }
+        st.put("settings", readSettings(sp));
         return st;
     }
 
@@ -446,6 +482,9 @@ final class Sync {
                 case "adelay":
                     for (String k : SyncCore.keys(pv)) if (!nx.has(k)) e.remove(n + "adelay_" + adelayKey(k));
                     for (String k : SyncCore.keys(nx)) e.putInt(n + "adelay_" + adelayKey(k), (int) nx.getJSONObject(k).optLong("ms"));
+                    break;
+                case "settings":
+                    writeSettings(e, nx, pv);
                     break;
                 case "hist":
                     for (String kind : new String[]{"live", "vod"}) {

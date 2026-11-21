@@ -39,7 +39,7 @@ final class SyncCore {
     private SyncCore() {}
 
     static final String[] MAPS = {"pos", "up", "watched", "fav", "favcat", "hidecat", "showcat", "hidetag", "recblock",
-            "catname", "queue", "pic", "adelay"};
+            "catname", "queue", "pic", "adelay", "settings"};
     static final long TOMBSTONE_MS = 60L * 86400000L;
     static final int HIST_KEEP = 60, HIST_SHOW = 40, ROUNDS = 10000;
 
@@ -222,6 +222,7 @@ final class SyncCore {
             case "catname": return a.optString("n", "").equals(b.optString("n", ""));
             case "pic": return a.optLong("m", 0) == b.optLong("m", 0);
             case "adelay": return a.optLong("ms", 0) == b.optLong("ms", 0);
+            case "settings": return String.valueOf(a.opt("v")).equals(String.valueOf(b.opt("v")));
             default: return true;
         }
     }
@@ -257,7 +258,7 @@ final class SyncCore {
             for (String k : keys(old)) {
                 if (res.has(k)) continue;
                 JSONObject s = old.getJSONObject(k);
-                if (s.has("x")) res.put(k, s);
+                if (s.has("x") || m.equals("settings")) res.put(k, s); // settings: one this app doesn't have
                 else res.put(k, new JSONObject().put("x", 1).put("t", now));
             }
             out.put(m, res);
