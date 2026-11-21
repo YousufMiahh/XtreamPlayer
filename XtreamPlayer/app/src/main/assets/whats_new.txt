@@ -1,9 +1,2 @@
-- A new launch animation: the Y and M fly in and lock together to make the logo.
-- Film and series pages, Netflix-style: Resume with its progress, Play From Beginning and Episodes & More, or Play and Audio & Subtitles for something new. Something you're part way through plays behind the page.
-- Home: rest on a film or series and it widens and plays a preview. Turn it off in Settings → Film & Series Previews.
-- The player, Netflix-style: ▲ for Back, Play From Beginning, Next Episode and Episodes; ▼ for Settings. The title shows at the top right while paused, and holding OK opens the menu straight away.
-- Skip Intro and Skip Recap now also use SkipDB and IntroDB when TheIntroDB has nothing. The player's settings show what was found for each episode.
-- Search has its own keyboard, like Netflix, so the TV's keyboard no longer pops up.
-- Because you watched: only titles you actually watched, and hold OK on a card for "Don't recommend based on this".
-- Picture: choose Fit, Fill screen, Stretch, 16:9 or 4:3 in the player's settings, remembered for each channel, film and series.
-- Smoother, Netflix-paced animations, and no more cut-off highlights.
+- Sync with your other devices: favourites, Continue Watching, watched, your queue and hidden or renamed categories now follow you between your Fire TV, phone, Mac and Samsung TV when they use the same login. It's encrypted on the device, so the sync server can't see your login or what you watch. Settings → Sync to turn it off or sync now.
+- Film and series pages show the title's logo, like Netflix. On a series it shrinks out of the way when the seasons come up.
