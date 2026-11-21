@@ -48,7 +48,7 @@ public class NextUpCard extends LinearLayout {
 
         next = new FillButton(c);
         next.setFocusable(true);
-        LayoutParams nl = new LayoutParams(Ui.dp(c, 250), Ui.dp(c, 60));
+        LayoutParams nl = new LayoutParams(LayoutParams.WRAP_CONTENT, Ui.dp(c, 60));
         nl.leftMargin = Ui.dp(c, 16);
         addView(next, nl);
     }
@@ -108,6 +108,7 @@ public class NextUpCard extends LinearLayout {
         /** "Next Episode", or "Next in Queue" when your Queue carries on with something else. */
         public void setLabel(String s) {
             label = s;
+            requestLayout();
             invalidate();
         }
 
@@ -127,6 +128,14 @@ public class NextUpCard extends LinearLayout {
                     v.invalidate();
                 }
             });
+        }
+
+        /** Wide enough for its label ("Next in Queue" and bigger text sizes too), never narrower than 250. */
+        @Override
+        protected void onMeasure(int wSpec, int hSpec) {
+            int h = MeasureSpec.getSize(hSpec);
+            int need = (int) Math.ceil(text.measureText(label) + h * 0.58f + Ui.dp(getContext(), 56));
+            setMeasuredDimension(Math.max(Ui.dp(getContext(), 250), need), h);
         }
 
         @Override

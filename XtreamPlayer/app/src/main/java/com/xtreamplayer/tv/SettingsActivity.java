@@ -265,6 +265,7 @@ public class SettingsActivity extends Activity {
         } catch (Exception ignored) {
         }
         row("Version", "YM Player " + ver, null);
+        row("Pictures", ImageLoader.report(), null); // what went wrong if posters or logos don't show
         row("Check for Updates", "Get the latest version", new Action() {
             public void run(TextView v) { Updater.check(SettingsActivity.this, true); }
         });

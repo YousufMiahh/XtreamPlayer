@@ -201,9 +201,43 @@ public final class ImageLoader {
             if (b == null) { // some images only decode with the default settings
                 b = BitmapFactory.decodeByteArray(data, 0, data.length);
             }
+            if (b == null) problem(url, "not a picture this device can show (" + data.length + " bytes" + kind(data) + ")");
+            else loaded++;
             return b;
         } catch (Throwable t) {
+            problem(url, t instanceof java.net.SocketTimeoutException ? "timed out"
+                    : t instanceof java.net.UnknownHostException ? "server not found"
+                    : t instanceof javax.net.ssl.SSLException ? "secure connection failed"
+                    : t.getMessage() == null ? t.getClass().getSimpleName() : t.getMessage());
             return null;
         }
+    }
+
+    // ------------------------------------------------------------ what went wrong (Settings › About › Pictures)
+
+    private static volatile int loaded, failed;
+    private static volatile String lastProblem;
+    private static volatile long lastProblemAt;
+
+    private static void problem(String url, String why) {
+        failed++;
+        String host = url;
+        try { host = new java.net.URL(url).getHost(); } catch (Exception ignored) {}
+        lastProblem = host + ": " + why;
+        lastProblemAt = System.currentTimeMillis();
+    }
+
+    private static String kind(byte[] d) {
+        if (d.length > 12 && d[4] == 'f' && d[5] == 't' && d[6] == 'y' && d[7] == 'p') return ", AVIF/HEIF";
+        if (d.length > 0 && (d[0] == '<' || d[0] == '{')) return ", a web page";
+        return "";
+    }
+
+    /** "312 loaded, 0 failed", plus the last problem if there was one. */
+    public static String report() {
+        String s = loaded + " loaded, " + failed + " failed";
+        if (lastProblem == null) return s;
+        long min = (System.currentTimeMillis() - lastProblemAt) / 60000;
+        return s + ". Last problem " + (min < 1 ? "just now" : min + " min ago") + ": " + lastProblem;
     }
 }

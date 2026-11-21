@@ -57,7 +57,9 @@ final class PlayerTop extends FrameLayout {
         label.setTypeface(Ui.semibold());
         label.setLetterSpacing(0.04f);
         label.setPadding(Ui.dp(c, 2), Ui.dp(c, 10), 0, 0);
+        label.setSingleLine(true);
         left.addView(label);
+        left.setMinimumWidth(Ui.dp(c, 420)); // room for the longest name ("PLAY FROM BEGINNING") under any button
         addView(left, new LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.START | Gravity.TOP));
 
         info = new LinearLayout(c);
