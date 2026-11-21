@@ -42,6 +42,8 @@ final class SyncCore {
             "catname", "queue", "pic", "adelay", "settings"};
     static final long TOMBSTONE_MS = 60L * 86400000L;
     static final int HIST_KEEP = 60, HIST_SHOW = 40, ROUNDS = 10000;
+    /** Every app keeps at least this many of each history (the Mac keeps 30 channels). */
+    static final int HIST_SURE = 30;
 
     // ================================================================ keys and encryption (plain Java)
 
@@ -285,6 +287,16 @@ final class SyncCore {
                 hist.put(k, e);
                 prev = e.optLong("t");
             }
+            // gone from this list while plenty newer stayed? Pushed off its end. Otherwise: taken off by hand
+            if (!mine.isEmpty()) {
+                for (String k : keys(oldHist)) {
+                    JSONObject s = oldHist.getJSONObject(k);
+                    if (!histKind(k).equals(kind) || s.has("x") || sh.has(k) || s.optLong("t") <= clear.optLong(kind, 0)) continue;
+                    int newer = 0;
+                    for (String m2 : mine) if (hist.getJSONObject(m2).optLong("t") > s.optLong("t")) newer++;
+                    if (newer < HIST_SURE) hist.put(k, new JSONObject().put("x", 1).put("t", now));
+                }
+            }
             if (mine.isEmpty()) {
                 boolean had = false;
                 for (String k : keys(oldHist)) {
@@ -341,12 +353,19 @@ final class SyncCore {
         final JSONObject h = out.getJSONObject("hist");
         for (String kind : new String[]{"live", "vod"}) {
             List<String> ks = new ArrayList<>();
-            for (String k : keys(h)) if (histKind(k).equals(kind)) ks.add(k);
+            for (String k : keys(h)) if (histKind(k).equals(kind) && !h.getJSONObject(k).has("x")) ks.add(k);
             Collections.sort(ks, (x, y) -> Long.compare(h.optJSONObject(y).optLong("t"), h.optJSONObject(x).optLong("t")));
             for (int idx = 0; idx < ks.size(); idx++) {
                 String k = ks.get(idx);
                 JSONObject e = h.getJSONObject(k);
-                if (e.has("x") || e.optLong("t") <= hc.optLong(kind) || idx >= HIST_KEEP) {
+                if (e.optLong("t") <= hc.optLong(kind) || idx >= HIST_KEEP) {
+                    h.remove(k);
+                    if (remote.getJSONObject("hist").has(k)) dirty = true;
+                }
+            }
+            for (String k : keys(h)) { // removals: kept a while so they spread, then dropped
+                JSONObject e = h.getJSONObject(k);
+                if (histKind(k).equals(kind) && e.has("x") && (e.optLong("t") < now - TOMBSTONE_MS || e.optLong("t") <= hc.optLong(kind))) {
                     h.remove(k);
                     if (remote.getJSONObject("hist").has(k)) dirty = true;
                 }

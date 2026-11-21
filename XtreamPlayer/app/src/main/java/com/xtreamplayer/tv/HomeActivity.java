@@ -312,7 +312,12 @@ public class HomeActivity extends Activity {
             ((TextView) shelf.getChildAt(0)).setText(Cards.titleWithMenuHint(this, "Your Queue", "for options"));
             localRows.addView(shelf);
         }
-        if (prefs.homeShows("recent")) add(localRows, "Recent Channels", limit(prefs.history(true), 20), Cards.Shape.CHANNEL);
+        List<Item> recent = prefs.homeShows("recent") ? limit(prefs.history(true), 20) : null;
+        if (recent != null && !recent.isEmpty()) { // ☰ / hold OK: favourite, or take it off the list
+            LinearLayout shelf = Cards.shelf(this, "Recent Channels", recent, Cards.Shape.CHANNEL, prefs, pick, removeMenu);
+            ((TextView) shelf.getChildAt(0)).setText(Cards.titleWithMenuHint(this, "Recent Channels", "for options"));
+            localRows.addView(shelf);
+        }
         if (prefs.homeShows("fav_live")) add(localRows, "Favourite Channels", prefs.favs(Item.LIVE), Cards.Shape.CHANNEL);
         if (prefs.homeShows("fav_movie")) add(localRows, "Favourite Movies", prefs.favs(Item.MOVIE), Cards.Shape.POSTER);
         if (prefs.homeShows("fav_series")) add(localRows, "Favourite Series", prefs.favs(Item.SERIES), Cards.Shape.POSTER);

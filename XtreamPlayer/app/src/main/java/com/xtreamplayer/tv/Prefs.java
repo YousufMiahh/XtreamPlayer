@@ -551,6 +551,22 @@ public class Prefs {
         sp.edit().putString(ns() + "hist_" + (live ? "live" : "vod"), a.toString()).apply();
     }
 
+    /** True if it's in Recent Channels (or recently played films / episodes). */
+    public boolean inHistory(Item it) {
+        if (it == null) return false;
+        for (Item h : history(Item.LIVE.equals(it.type))) if (h.key().equals(it.key())) return true;
+        return false;
+    }
+
+    /** Takes one channel (or film / episode) off the recently watched list (synced to your other devices). */
+    public void removeHistory(Item it) {
+        boolean live = Item.LIVE.equals(it.type);
+        List<Item> list = history(live);
+        JSONArray a = new JSONArray();
+        for (Item h : list) if (!h.key().equals(it.key())) a.put(h.toJson());
+        sp.edit().putString(ns() + "hist_" + (live ? "live" : "vod"), a.toString()).apply();
+    }
+
     public List<Item> history(boolean live) {
         List<Item> out = new ArrayList<>();
         try {

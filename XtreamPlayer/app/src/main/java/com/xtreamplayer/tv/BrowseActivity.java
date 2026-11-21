@@ -750,6 +750,17 @@ public class BrowseActivity extends Activity implements TopBar.Reselect {
     private void toggleFav(final int pos) {
         if (pos < 0 || pos >= contentAdapter.getCount()) return;
         Item it = contentAdapter.getItem(pos);
+        if (live && currentCat != null && RECENT.equals(currentCat.id)) { // Recent Channels: favourite, or take it off the list
+            ItemMenu.show(this, prefs, it, null, new Runnable() {
+                public void run() {
+                    List<Item> l = prefs.history(true);
+                    contentAdapter.set(l);
+                    count.setText(l.size() + " items");
+                    if (!l.isEmpty()) content.setSelection(Math.min(pos, l.size() - 1));
+                }
+            });
+            return;
+        }
         if (!live) { // films & series: Favourite, Queue, Watched…
             ItemMenu.show(this, prefs, it, null, new Runnable() {
                 public void run() { favChanged(pos); }

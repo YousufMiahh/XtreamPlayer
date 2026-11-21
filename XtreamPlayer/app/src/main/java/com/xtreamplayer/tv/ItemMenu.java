@@ -19,7 +19,7 @@ final class ItemMenu {
      * @param changed run after anything changed, to refresh the screen
      */
     static void show(final Activity a, final Prefs prefs, final Item it, final List<Item> season, final Runnable changed) {
-        final boolean episode = Item.EPISODE.equals(it.type), series = Item.SERIES.equals(it.type);
+        final boolean episode = Item.EPISODE.equals(it.type), series = Item.SERIES.equals(it.type), live = Item.LIVE.equals(it.type);
         final List<String> labels = new ArrayList<>();
         final List<Runnable> actions = new ArrayList<>();
 
@@ -28,7 +28,7 @@ final class ItemMenu {
             labels.add(fav ? "♥  Remove from Favourites" : "♡  Add to Favourites");
             actions.add(new Runnable() { public void run() { Open.toggleFav(a, prefs, it); } });
         }
-        if (!series) {
+        if (!series && !live) {
             final boolean queued = prefs.inQueue(it);
             labels.add(queued ? "−  Remove from Queue" : "＋  Add to Queue");
             actions.add(new Runnable() {
@@ -46,7 +46,11 @@ final class ItemMenu {
             labels.add(all ? "○  Mark Season as Unwatched" : "✓  Mark Season as Watched");
             actions.add(new Runnable() { public void run() { prefs.setWatched(season, !all); } });
         }
-        if (!series && (prefs.position(it) > 0 || prefs.isUpNext(it))) {
+        if (live && prefs.inHistory(it)) {
+            labels.add("✕  Remove from Recent Channels");
+            actions.add(new Runnable() { public void run() { prefs.removeHistory(it); } });
+        }
+        if (!series && !live && (prefs.position(it) > 0 || prefs.isUpNext(it))) {
             labels.add("✕  Remove from Continue Watching");
             actions.add(new Runnable() { public void run() { prefs.setPosition(it, 0); } });
         }
