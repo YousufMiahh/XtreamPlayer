@@ -54,12 +54,17 @@ public final class Cards {
             img.setScaleType(ImageView.ScaleType.CENTER_CROP);
         }
         art.addView(img, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-        if (image == null && shape != Shape.POSTER) {
-            TextView ph = Ui.title(c, initials(title), 30);
-            ph.setTextColor(Ui.TEXT3);
-            ph.setGravity(Gravity.CENTER);
-            art.addView(ph, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-        }
+        // Until the picture arrives, and if it can't be had (the provider's picture server is down):
+        // a channel's initials, or a film's / series' name
+        TextView ph;
+        if (shape == Shape.POSTER) {
+            ph = Ui.lines(Ui.title(c, title == null ? "" : title, 18), 4);
+            int p = Ui.dp(c, 14);
+            ph.setPadding(p, p, p, p);
+        } else ph = Ui.title(c, initials(title), 30);
+        ph.setTextColor(Ui.TEXT3);
+        ph.setGravity(Gravity.CENTER);
+        art.addView(ph, 0, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         if (progress > 0) {
             FrameLayout.LayoutParams bp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(c, 5), Gravity.BOTTOM);
             int m = Ui.dp(c, 12);
@@ -69,7 +74,7 @@ public final class Cards {
         card.addView(art, new LinearLayout.LayoutParams(w, h));
         final FrameLayout artF = art;
         final String imageF = image;
-        ImageLoader.load(img, image, shape == Shape.POSTER ? 320 : 480, shape == Shape.POSTER ? 480 : 270);
+        ImageLoader.load(img, image, shape == Shape.POSTER ? 320 : 480, shape == Shape.POSTER ? 480 : 270, ph);
 
         final TextView t = Ui.oneLine(Ui.medium(c, title, 16, Ui.TEXT2));
         t.setPadding(Ui.dp(c, 2), Ui.dp(c, 12), 0, 0);

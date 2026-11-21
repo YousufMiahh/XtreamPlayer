@@ -117,9 +117,8 @@ public class SearchActivity extends Activity implements TopBar.Reselect {
         paintChips();
 
         status = Ui.text(this, "", 17, Ui.TEXT2);
-        status.setGravity(Gravity.START);
-        status.setPadding(Ui.dp(this, 64), 0, 0, 0);
-        status.setPadding(0, Ui.dp(this, 18), 0, 0);
+        status.setGravity(Gravity.CENTER_HORIZONTAL); // centred over the results
+        status.setPadding(Ui.dp(this, 64), Ui.dp(this, 18), Ui.dp(this, 64), 0);
         col.addView(status, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         for (int i = 0; i < 3; i++) {
