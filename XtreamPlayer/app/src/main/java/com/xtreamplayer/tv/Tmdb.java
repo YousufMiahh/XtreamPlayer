@@ -135,22 +135,53 @@ final class Tmdb {
      * The title's logo (the transparent artwork Netflix and Apple TV show instead of the name), as an
      * image URL, or null. English first, then one with no words; remembered per title.
      */
-    static String logo(Context c, String kind, String id) {
-        if (id == null || id.isEmpty()) return null;
+    static String logo(Context c, String kind, String id) { return art(c, kind, id)[0]; }
+
+    /**
+     * {logo, backdrop} image URLs (either may be null): the logo as above, and a wide picture
+     * without words (or an English one) for a card that widens on Home. One request, remembered.
+     */
+    static String[] art(Context c, String kind, String id) {
+        String[] none = {null, null};
+        if (id == null || id.isEmpty()) return none;
         SharedPreferences sp = cache(c);
-        String ck = "logo:" + kind + ":" + id;
-        if (sp.contains(ck)) {
-            String v = sp.getString(ck, "");
-            return v.isEmpty() ? null : v;
+        String lk = "logo:" + kind + ":" + id, bk = "backdrop:" + kind + ":" + id;
+        if (sp.contains(lk) && sp.contains(bk)) {
+            String l = sp.getString(lk, ""), b = sp.getString(bk, "");
+            return new String[]{l.isEmpty() ? null : l, b.isEmpty() ? null : b};
         }
-        String url;
+        String logo, back;
         try {
-            url = pickLogo(get("/" + kind + "/" + id + "/images?include_image_language=en,null").optJSONArray("logos"));
+            JSONObject o = get("/" + kind + "/" + id + "/images?include_image_language=en,null");
+            logo = pickLogo(o.optJSONArray("logos"));
+            back = pickBackdrop(o.optJSONArray("backdrops"));
         } catch (Exception e) {
-            return null; // offline: try again next time
+            return none; // offline: try again next time
         }
-        sp.edit().putString(ck, url == null ? "" : url).apply();
-        return url;
+        sp.edit().putString(lk, logo == null ? "" : logo).putString(bk, back == null ? "" : back).apply();
+        return new String[]{logo, back};
+    }
+
+    /** A backdrop without words first (the logo goes on top), then an English one; most liked. */
+    static String pickBackdrop(JSONArray list) {
+        if (list == null) return null;
+        JSONObject best = null;
+        int bestRank = 9;
+        double bestVote = -1;
+        for (int i = 0; i < list.length(); i++) {
+            JSONObject b = list.optJSONObject(i);
+            if (b == null || b.optString("file_path", "").isEmpty()) continue;
+            String lang = b.isNull("iso_639_1") ? "" : b.optString("iso_639_1", "");
+            int rank = lang.isEmpty() ? 0 : "en".equals(lang) ? 1 : 9;
+            if (rank == 9) continue;
+            double vote = b.optDouble("vote_average", 0);
+            if (rank < bestRank || (rank == bestRank && vote > bestVote)) {
+                best = b;
+                bestRank = rank;
+                bestVote = vote;
+            }
+        }
+        return best == null ? null : "https://image.tmdb.org/t/p/w780" + best.optString("file_path");
     }
 
     /** Best of TMDB's logos: English (most liked) before language-free; SVGs asked for as PNG. */

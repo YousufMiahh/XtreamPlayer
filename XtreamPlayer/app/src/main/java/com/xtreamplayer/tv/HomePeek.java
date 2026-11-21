@@ -12,12 +12,13 @@ import android.widget.LinearLayout;
 import java.util.List;
 
 /**
- * Home, Netflix-style: rest on a film or series card and it widens into a 16:9 picture, then a
- * moment later starts playing (muted) inside the card. Moving off puts it back. Settings → Film &
- * Series Previews turns it off.
+ * Home, Netflix-style: the film or series card you're on widens straight away into a 16:9 picture
+ * (its TMDB backdrop, with the title's logo over it, when there is one), then starts playing
+ * (muted) inside the card as soon as it can. Moving on puts it back and widens the next one at
+ * once. Settings → Film & Series Previews turns it off.
  */
 final class HomePeek {
-    private static final long WIDEN_AFTER_MS = 1200, PLAY_AFTER_MS = 900;
+    private static final long WIDEN_AFTER_MS = 0, PLAY_AFTER_MS = 450; // play once you've stopped on it
     private static final long FILM_START_MS = 5 * 60_000L, EPISODE_START_MS = 3 * 60_000L;
 
     private final Activity a;
@@ -62,6 +63,7 @@ final class HomePeek {
             baseW = lp.width;
             int target = Math.round(lp.height * 16f / 9f);
             if (target > baseW + 4) animateWidth(baseW, target, null);
+            dress(card);
             Async.MAIN.postDelayed(play, PLAY_AFTER_MS);
         }
     };
@@ -105,7 +107,9 @@ final class HomePeek {
     private void start(LinearLayout c, Item what, long fromMs) {
         FrameLayout art = (FrameLayout) c.getChildAt(0);
         host = new FrameLayout(a);
-        art.addView(host, 1, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        // over the artwork and backdrop, under the logo
+        int at = backdrop != null && backdrop.getParent() == art ? art.indexOfChild(backdrop) + 1 : 1;
+        art.addView(host, at, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         // The video sits above the artwork, see-through until it's ready
         host.setAlpha(0f);
         preview.moveTo(host, null);
@@ -124,7 +128,7 @@ final class HomePeek {
         if (!Item.MOVIE.equals(it.type) && !Item.SERIES.equals(it.type) && !Item.EPISODE.equals(it.type)) return;
         if (!(((LinearLayout) now).getChildAt(0) instanceof FrameLayout)) return;
         card = (LinearLayout) now;
-        Async.MAIN.postDelayed(widen, WIDEN_AFTER_MS);
+        Async.MAIN.post(widen); // straight away, like Netflix
     }
 
     private void collapse(boolean animate) {
@@ -138,6 +142,9 @@ final class HomePeek {
             h.animate().cancel();
             if (h.getParent() instanceof ViewGroup) ((ViewGroup) h.getParent()).removeView(h);
         }
+        for (View v : new View[]{backdrop, logoLayer}) if (v != null && v.getParent() instanceof ViewGroup) ((ViewGroup) v.getParent()).removeView(v);
+        backdrop = null;
+        logoLayer = null;
         if (card != null) {
             View art = card.getChildAt(0);
             int w = art.getLayoutParams().width;
@@ -149,6 +156,74 @@ final class HomePeek {
         }
         card = null;
         baseW = 0;
+    }
+
+    // ------------------------------------------------------------ backdrop + logo (TMDB)
+
+    private android.widget.ImageView backdrop;
+    private FrameLayout logoLayer;
+
+    /** The widened card's picture: TMDB's wide backdrop and the title's logo, faded in when they're here. */
+    private void dress(final LinearLayout c) {
+        final Item it = (Item) c.getTag();
+        if (it == null) return;
+        final FrameLayout art = (FrameLayout) c.getChildAt(0);
+        final boolean film = Item.MOVIE.equals(it.type);
+        final String name = Item.EPISODE.equals(it.type) && it.parentName != null ? it.parentName : it.name;
+        backdrop = new android.widget.ImageView(a);
+        backdrop.setScaleType(android.widget.ImageView.ScaleType.CENTER_CROP);
+        backdrop.setAlpha(0f);
+        art.addView(backdrop, 1, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        logoLayer = new FrameLayout(a);
+        logoLayer.setBackground(new android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.BOTTOM_TOP,
+                new int[]{0xB3000000, 0x00000000}));
+        logoLayer.setAlpha(0f);
+        final android.widget.ImageView logo = new android.widget.ImageView(a);
+        logo.setAdjustViewBounds(true);
+        logo.setScaleType(android.widget.ImageView.ScaleType.FIT_START);
+        FrameLayout.LayoutParams llp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
+                android.view.Gravity.BOTTOM | android.view.Gravity.START);
+        int m = Ui.dp(a, 14);
+        llp.setMargins(m, m, m, m);
+        logoLayer.addView(logo, llp);
+        art.addView(logoLayer, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        final android.widget.ImageView back = backdrop;
+        final FrameLayout layer = logoLayer;
+        Async.run(new Async.Work<String[]>() {
+            public String[] run() {
+                String kind = film ? Tmdb.MOVIE : Tmdb.TV;
+                String id = Tmdb.findId(a, kind, name, it.tmdb);
+                return id == null ? new String[]{null, null} : Tmdb.art(a, kind, id);
+            }
+        }, new Async.Done<String[]>() {
+            public void done(String[] urls, Exception e) {
+                if (urls == null || card != c || backdrop != back) return;
+                int artH = art.getHeight();
+                logo.setMaxHeight(Math.max(1, Math.round(artH * 0.38f)));
+                logo.setMaxWidth(Math.max(1, Math.round(artH * 16f / 9f * 0.55f)));
+                show(urls[1], back, 780, 440, back);
+                show(urls[0], logo, 500, 200, layer);
+            }
+        });
+    }
+
+    /** Puts a picture in (now if it's already loaded) and fades `fade` in. */
+    private void show(final String url, final android.widget.ImageView into, int w, int h, final View fade) {
+        if (url == null) return;
+        android.graphics.Bitmap have = ImageLoader.cached(url);
+        if (have != null) {
+            into.setImageBitmap(have);
+            fade.animate().alpha(1f).setDuration(220).start();
+            return;
+        }
+        ImageLoader.prefetch(url, w, h, new Runnable() {
+            public void run() {
+                android.graphics.Bitmap bm = ImageLoader.cached(url);
+                if (bm == null || fade.getParent() == null) return;
+                into.setImageBitmap(bm);
+                fade.animate().alpha(1f).setDuration(260).start();
+            }
+        });
     }
 
     private void animateWidth(int from, int to, final LinearLayout target) {
