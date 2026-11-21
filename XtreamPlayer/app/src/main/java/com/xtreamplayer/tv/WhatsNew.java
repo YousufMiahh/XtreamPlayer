@@ -30,7 +30,10 @@ final class WhatsNew {
     }
 
     /** Shows the summary if the app has just been updated to new notes. True if it showed. */
-    static boolean maybeShow(Activity a) {
+    static boolean maybeShow(Activity a) { return maybeShow(a, null); }
+
+    /** @param after runs once the pop-up is closed (if it was shown). */
+    static boolean maybeShow(Activity a, Runnable after) {
         String notes = notes(a);
         if (notes.isEmpty()) return false;
         SharedPreferences sp = a.getSharedPreferences("whatsnew", Context.MODE_PRIVATE);
@@ -39,7 +42,7 @@ final class WhatsNew {
         if (key.equals(seen)) return false;
         sp.edit().putString("seen", key).apply();
         if (seen == null && freshInstall(a)) return false; // new users get the tutorial instead
-        show(a, notes);
+        show(a, notes, after);
         return true;
     }
 
@@ -52,7 +55,9 @@ final class WhatsNew {
         }
     }
 
-    static void show(Activity a, String notes) {
+    static void show(Activity a, String notes) { show(a, notes, null); }
+
+    static void show(Activity a, String notes, final Runnable after) {
         StringBuilder b = new StringBuilder();
         for (String line : notes.split("\n")) {
             line = line.trim();
@@ -66,6 +71,9 @@ final class WhatsNew {
                 .setTitle("What's New in YM Player" + version)
                 .setMessage(b.toString())
                 .setPositiveButton("Got it", null)
+                .setOnDismissListener(after == null ? null : new android.content.DialogInterface.OnDismissListener() {
+                    public void onDismiss(android.content.DialogInterface d) { after.run(); }
+                })
                 .show();
     }
 }

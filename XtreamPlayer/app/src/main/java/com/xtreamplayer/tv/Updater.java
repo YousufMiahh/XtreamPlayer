@@ -37,7 +37,7 @@ public final class Updater {
 
     static final String REPO = "YousufMiahh/XtreamPlayer";
     private static final String APP = "YM Player";
-    private static final long EVERY_MS = 3 * 3600_000L;
+    private static final long EVERY_MS = 60_000L; // every launch (not twice in a minute)
     private static boolean busy;
 
     static class Release {

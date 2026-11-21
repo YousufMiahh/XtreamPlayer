@@ -80,9 +80,21 @@ public class HomeActivity extends Activity {
                 Coach.offer(HomeActivity.this, true, new Runnable() { public void run() { homeTour(); } });
             }
         }, 1500);
-        Async.MAIN.postDelayed(new Runnable() { // new version on GitHub? (not over the tutorial)
+        // What's New after an update, then a check for a newer version on GitHub (every launch;
+        // after the What's New is closed, and never over the tutorial)
+        final Runnable checkUpdate = new Runnable() {
+            int tries;
             public void run() {
-                if (!isFinishing() && !Coach.showing(HomeActivity.this) && !WhatsNew.maybeShow(HomeActivity.this)) Updater.check(HomeActivity.this, false);
+                if (isFinishing()) return;
+                if (Coach.showing(HomeActivity.this) && tries++ < 60) { Async.MAIN.postDelayed(this, 5000); return; }
+                Updater.check(HomeActivity.this, false);
+            }
+        };
+        Async.MAIN.postDelayed(new Runnable() {
+            public void run() {
+                if (isFinishing()) return;
+                if (Coach.showing(HomeActivity.this)) { checkUpdate.run(); return; }
+                if (!WhatsNew.maybeShow(HomeActivity.this, checkUpdate)) checkUpdate.run();
             }
         }, 3000);
     }
