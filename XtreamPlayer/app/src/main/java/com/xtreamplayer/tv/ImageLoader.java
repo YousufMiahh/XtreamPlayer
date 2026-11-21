@@ -188,7 +188,7 @@ public final class ImageLoader {
 
     private static Bitmap fetch(String url, int reqW, int reqH) {
         try {
-            byte[] data = Http.bytes(url, userAgent, 8000, 15000); // a stuck image server mustn't hold up the rest
+            byte[] data = download(url);
             BitmapFactory.Options o = new BitmapFactory.Options();
             o.inJustDecodeBounds = true;
             BitmapFactory.decodeByteArray(data, 0, data.length, o);
@@ -211,6 +211,64 @@ public final class ImageLoader {
                     : t.getMessage() == null ? t.getClass().getSimpleName() : t.getMessage());
             return null;
         }
+    }
+
+    // ------------------------------------------------------------ asking the way other players do
+
+    /**
+     * How each picture server is asked: 0 as the app asks the provider (its user agent), 1 with the
+     * address tidied (spaces and other characters encoded) and Android's own user agent, 2 the
+     * same as a web browser. Some picture servers turn away an app they don't know with a
+     * "not found"; other players get the pictures because they ask like 1 or 2. Remembered per server.
+     */
+    private static final java.util.Map<String, Integer> HOST_WAY = new java.util.concurrent.ConcurrentHashMap<>();
+    private static final String BROWSER_UA = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Mobile Safari/537.36";
+
+    private static byte[] download(String url) throws java.io.IOException {
+        String host = "";
+        try { host = new java.net.URL(url).getHost(); } catch (Exception ignored) {}
+        Integer known = HOST_WAY.get(host);
+        int first = known == null ? 0 : known;
+        java.io.IOException last = null;
+        for (int way = first; way <= 2; way++) {
+            try {
+                byte[] b;
+                if (way == 0) b = Http.bytes(url, userAgent, 8000, 15000); // a stuck image server mustn't hold up the rest
+                else {
+                    String ua = way == 1 ? System.getProperty("http.agent", BROWSER_UA) : BROWSER_UA;
+                    b = Http.bytes(tidy(url), ua, 8000, 15000);
+                }
+                if (known == null || known != way) HOST_WAY.put(host, way);
+                return b;
+            } catch (java.io.IOException e) {
+                last = e;
+                String m = e.getMessage() == null ? "" : e.getMessage();
+                if (!m.contains("HTTP 4")) throw e; // only "not found" / "forbidden" are worth asking differently
+            }
+        }
+        throw last;
+    }
+
+    /** Spaces and other characters a browser would encode (leaving %xx as it is). */
+    static String tidy(String url) {
+        StringBuilder sb = new StringBuilder();
+        for (byte b : url.trim().getBytes(java.nio.charset.StandardCharsets.UTF_8)) {
+            int c = b & 0xff;
+            if (c <= 0x20 || c >= 0x7f || c == '"' || c == '<' || c == '>' || c == '\\' || c == '^' || c == '`' || c == '{' || c == '|' || c == '}') {
+                sb.append('%').append(String.format("%02X", c));
+            } else sb.append((char) c);
+        }
+        return sb.toString();
+    }
+
+    /** Which way each picture server answered (for Settings). */
+    static String ways() {
+        StringBuilder sb = new StringBuilder();
+        for (java.util.Map.Entry<String, Integer> e : HOST_WAY.entrySet()) {
+            if (e.getValue() == 0) continue;
+            sb.append(sb.length() == 0 ? "" : ", ").append(e.getKey()).append(e.getValue() == 1 ? " (as Android)" : " (as a browser)");
+        }
+        return sb.toString();
     }
 
     // ------------------------------------------------------------ what went wrong (Settings › About › Pictures)
@@ -236,6 +294,8 @@ public final class ImageLoader {
     /** "312 loaded, 0 failed", plus the last problem if there was one. */
     public static String report() {
         String s = loaded + " loaded, " + failed + " failed";
+        String w = ways();
+        if (!w.isEmpty()) s += ". Asked differently: " + w;
         if (lastProblem == null) return s;
         long min = (System.currentTimeMillis() - lastProblemAt) / 60000;
         return s + ". Last problem " + (min < 1 ? "just now" : min + " min ago") + ": " + lastProblem;
