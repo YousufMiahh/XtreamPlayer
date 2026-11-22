@@ -126,6 +126,7 @@ final class HomePeek {
     private void focusMoved(View now) {
         if (now == card) return;
         collapse(true);
+        if (shownInfo != null && (now == null || Cards.infoBox(now) != shownInfo)) { shownInfo.setVisibility(View.GONE); shownInfo = null; }
         if (!active || now == null || prefs.homePreviews() == 0) return;
         if (!(now instanceof LinearLayout) || !(now.getTag() instanceof Item)) return;
         Item it = (Item) now.getTag();
@@ -147,6 +148,9 @@ final class HomePeek {
             if (h.getParent() instanceof ViewGroup) ((ViewGroup) h.getParent()).removeView(h);
         }
         for (View v : new View[]{backdrop, logoLayer}) if (v != null && v.getParent() instanceof ViewGroup) ((ViewGroup) v.getParent()).removeView(v);
+        // the details under the row stay while you move along it (the next card's replace them);
+        // moving to another row or off the cards puts them away
+        if (shownInfo != null && !animate) { shownInfo.setVisibility(View.GONE); shownInfo = null; }
         backdrop = null;
         logoLayer = null;
         if (card != null) {
@@ -194,22 +198,56 @@ final class HomePeek {
         art.addView(logoLayer, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         final android.widget.ImageView back = backdrop;
         final FrameLayout layer = logoLayer;
-        Async.run(new Async.Work<String[]>() {
-            public String[] run() {
+        Async.run(new Async.Work<Tmdb.Details>() {
+            public Tmdb.Details run() {
                 String kind = film ? Tmdb.MOVIE : Tmdb.TV;
                 String id = Tmdb.findId(a, kind, name, it.tmdb);
-                return id == null ? new String[]{null, null} : Tmdb.art(a, kind, id);
+                return id == null ? null : Tmdb.details(a, kind, id);
             }
-        }, new Async.Done<String[]>() {
-            public void done(String[] urls, Exception e) {
-                if (urls == null || card != c || backdrop != back) return;
+        }, new Async.Done<Tmdb.Details>() {
+            public void done(Tmdb.Details d, Exception e) {
+                if (d == null || card != c || backdrop != back) return;
                 int artH = art.getHeight();
                 logo.setMaxHeight(Math.max(1, Math.round(artH * 0.38f)));
                 logo.setMaxWidth(Math.max(1, Math.round(artH * 16f / 9f * 0.55f)));
-                show(urls[1], back, 780, 440, back);
-                show(urls[0], logo, 500, 200, layer);
+                show(d.backdrop, back, 780, 440, back);
+                show(d.logo, logo, 500, 200, layer);
+                showInfo(c, d, !film);
             }
         });
+    }
+
+    private LinearLayout shownInfo;
+
+    /** Under the row, like Netflix: "Series · Thriller · 2026 · 2 Seasons (15)" and the summary. */
+    private void showInfo(LinearLayout c, Tmdb.Details d, boolean series) {
+        LinearLayout box = Cards.infoBox(c);
+        if (box == null) return;
+        box.removeAllViews();
+        LinearLayout meta = new LinearLayout(a);
+        meta.setGravity(android.view.Gravity.CENTER_VERTICAL);
+        android.widget.TextView line = Ui.oneLine(Ui.medium(a, d.line(series), 17, Ui.TEXT));
+        line.setTypeface(Ui.semibold());
+        meta.addView(line);
+        if (d.cert != null) {
+            android.widget.TextView badge = Cards.ratingBadge(a, d.cert);
+            int bs = Ui.dp(a, 26);
+            LinearLayout.LayoutParams bl = new LinearLayout.LayoutParams(bs, bs);
+            bl.leftMargin = Ui.dp(a, 12);
+            meta.addView(badge, bl);
+        }
+        box.addView(meta);
+        if (d.overview != null) {
+            android.widget.TextView sum = Ui.lines(Ui.text(a, d.overview, 17, Ui.TEXT2), 2);
+            sum.setPadding(0, Ui.dp(a, 6), 0, 0);
+            sum.setLineSpacing(0, 1.15f);
+            box.addView(sum, new LinearLayout.LayoutParams(Ui.dp(a, 760), ViewGroup.LayoutParams.WRAP_CONTENT));
+        }
+        if (shownInfo != null && shownInfo != box) shownInfo.setVisibility(View.GONE);
+        shownInfo = box;
+        box.setAlpha(0f);
+        box.setVisibility(View.VISIBLE);
+        box.animate().alpha(1f).setDuration(220).start();
     }
 
     /** Puts a picture in (now if it's already loaded) and fades `fade` in. */

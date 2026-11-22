@@ -137,29 +137,113 @@ final class Tmdb {
      */
     static String logo(Context c, String kind, String id) { return art(c, kind, id)[0]; }
 
-    /**
-     * {logo, backdrop} image URLs (either may be null): the logo as above, and a wide picture
-     * without words (or an English one) for a card that widens on Home. One request, remembered.
-     */
+    /** {logo, backdrop} image URLs (either may be null), from details(). */
     static String[] art(Context c, String kind, String id) {
-        String[] none = {null, null};
-        if (id == null || id.isEmpty()) return none;
+        Details d = details(c, kind, id);
+        return d == null ? new String[]{null, null} : new String[]{d.logo, d.backdrop};
+    }
+
+    /** What Home shows under a card you're on, Netflix-style, plus its logo and wide picture. */
+    static final class Details {
+        String logo, backdrop, overview, year, runtime, cert;
+        int seasons;
+        final List<String> genres = new ArrayList<>();
+
+        /** "Series · Thriller · 2026 · 2 Seasons" (the age rating is drawn separately). */
+        String line(boolean series) {
+            List<String> p = new ArrayList<>();
+            p.add(series ? "Series" : "Film");
+            if (!genres.isEmpty()) p.add(genres.get(0));
+            if (year != null) p.add(year);
+            if (series && seasons > 0) p.add(seasons + (seasons == 1 ? " Season" : " Seasons"));
+            if (!series && runtime != null) p.add(runtime);
+            StringBuilder b = new StringBuilder();
+            for (String x : p) b.append(b.length() == 0 ? "" : "  ·  ").append(x);
+            return b.toString();
+        }
+    }
+
+    private static final java.util.Map<String, Details> DETAILS = new java.util.HashMap<>();
+
+    /**
+     * One request for everything: genres, year, seasons or running time, the UK age rating, the
+     * summary, and the logo and wide picture. Remembered (in memory, and on the device for a week).
+     */
+    static Details details(Context c, String kind, String id) {
+        if (id == null || id.isEmpty()) return null;
+        String ck = "details:" + kind + ":" + id;
+        synchronized (DETAILS) { if (DETAILS.containsKey(ck)) return DETAILS.get(ck); }
         SharedPreferences sp = cache(c);
-        String lk = "logo:" + kind + ":" + id, bk = "backdrop:" + kind + ":" + id;
-        if (sp.contains(lk) && sp.contains(bk)) {
-            String l = sp.getString(lk, ""), b = sp.getString(bk, "");
-            return new String[]{l.isEmpty() ? null : l, b.isEmpty() ? null : b};
-        }
-        String logo, back;
+        String saved = sp.getString(ck, null);
+        JSONObject o = null;
         try {
-            JSONObject o = get("/" + kind + "/" + id + "/images?include_image_language=en,null");
-            logo = pickLogo(o.optJSONArray("logos"));
-            back = pickBackdrop(o.optJSONArray("backdrops"));
+            if (saved != null) {
+                JSONObject w = new JSONObject(saved);
+                if (System.currentTimeMillis() - w.optLong("at") < 7L * 86400000L) o = w.getJSONObject("d");
+            }
+            if (o == null) {
+                boolean tv = TV.equals(kind);
+                o = get("/" + kind + "/" + id + "?append_to_response=images," + (tv ? "content_ratings" : "release_dates")
+                        + "&include_image_language=en,null");
+                JSONObject slim = new JSONObject(); // keep only what's used
+                for (String k : new String[]{"genres", "first_air_date", "release_date", "number_of_seasons", "runtime", "overview"}) {
+                    if (o.has(k)) slim.put(k, o.get(k));
+                }
+                JSONObject img = o.optJSONObject("images");
+                slim.put("logo", img == null ? "" : String.valueOf(pickLogo(img.optJSONArray("logos"))));
+                slim.put("backdrop", img == null ? "" : String.valueOf(pickBackdrop(img.optJSONArray("backdrops"))));
+                slim.put("cert", ukRating(o, tv));
+                o = slim;
+                sp.edit().putString(ck, new JSONObject().put("at", System.currentTimeMillis()).put("d", o).toString()).apply();
+            }
         } catch (Exception e) {
-            return none; // offline: try again next time
+            return null; // offline: try again next time
         }
-        sp.edit().putString(lk, logo == null ? "" : logo).putString(bk, back == null ? "" : back).apply();
-        return new String[]{logo, back};
+        Details d = new Details();
+        d.logo = nn(o.optString("logo", ""));
+        d.backdrop = nn(o.optString("backdrop", ""));
+        d.overview = nn(o.optString("overview", ""));
+        d.cert = nn(o.optString("cert", ""));
+        String date = o.optString("first_air_date", o.optString("release_date", ""));
+        d.year = date.length() >= 4 ? date.substring(0, 4) : null;
+        d.seasons = o.optInt("number_of_seasons", 0);
+        int mins = o.optInt("runtime", 0);
+        if (mins > 0) d.runtime = mins >= 60 ? (mins / 60) + "h " + (mins % 60) + "m" : mins + "m";
+        JSONArray g = o.optJSONArray("genres");
+        if (g != null) for (int i = 0; i < g.length(); i++) {
+            String n = g.optJSONObject(i) == null ? "" : g.optJSONObject(i).optString("name", "");
+            if (!n.isEmpty()) d.genres.add(n.replace("Action & Adventure", "Action").replace("Sci-Fi & Fantasy", "Sci-Fi"));
+        }
+        synchronized (DETAILS) { DETAILS.put(ck, d); }
+        return d;
+    }
+
+    private static String nn(String s) { return s == null || s.isEmpty() || "null".equals(s) ? null : s; }
+
+    /** The UK (BBFC) rating: "U", "PG", "12", "12A", "15", "18", or "" if TMDB doesn't have one. */
+    static String ukRating(JSONObject o, boolean tv) {
+        try {
+            if (tv) {
+                JSONArray r = o.getJSONObject("content_ratings").getJSONArray("results");
+                for (int i = 0; i < r.length(); i++) {
+                    JSONObject x = r.getJSONObject(i);
+                    if ("GB".equals(x.optString("iso_3166_1"))) return x.optString("rating", "");
+                }
+            } else {
+                JSONArray r = o.getJSONObject("release_dates").getJSONArray("results");
+                for (int i = 0; i < r.length(); i++) {
+                    JSONObject x = r.getJSONObject(i);
+                    if (!"GB".equals(x.optString("iso_3166_1"))) continue;
+                    JSONArray rd = x.getJSONArray("release_dates");
+                    for (int k = 0; k < rd.length(); k++) {
+                        String cert = rd.getJSONObject(k).optString("certification", "");
+                        if (!cert.isEmpty()) return cert;
+                    }
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        return "";
     }
 
     /** A backdrop without words first (the logo goes on top), then an English one; most liked. */

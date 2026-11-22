@@ -18,7 +18,10 @@ import java.util.List;
 public final class Cards {
     private Cards() {}
 
-    public enum Shape { POSTER, LANDSCAPE, CHANNEL }
+    public enum Shape { POSTER, LANDSCAPE, CHANNEL, HOME_POSTER }
+
+    /** Posters, including Home's bigger ones. */
+    static boolean poster(Shape s) { return s == Shape.POSTER || s == Shape.HOME_POSTER; }
 
     public interface OnPick {
         void pick(Item item, View card);
@@ -33,6 +36,7 @@ public final class Cards {
         int w, h;
         switch (shape) {
             case POSTER: w = Ui.dp(c, 160); h = Ui.dp(c, 240); break;
+            case HOME_POSTER: w = Ui.dp(c, 196); h = Ui.dp(c, 294); break; // Home: big, like Netflix
             case CHANNEL: w = Ui.dp(c, 220); h = Ui.dp(c, 124); break;
             default: w = Ui.dp(c, 300); h = Ui.dp(c, 169); break;
         }
@@ -54,7 +58,7 @@ public final class Cards {
             img.setScaleType(ImageView.ScaleType.CENTER_CROP);
         }
         art.addView(img, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-        if (image == null && shape != Shape.POSTER) {
+        if (image == null && !poster(shape)) {
             TextView ph = Ui.title(c, initials(title), 30);
             ph.setTextColor(Ui.TEXT3);
             ph.setGravity(Gravity.CENTER);
@@ -69,7 +73,7 @@ public final class Cards {
         card.addView(art, new LinearLayout.LayoutParams(w, h));
         final FrameLayout artF = art;
         final String imageF = image;
-        ImageLoader.load(img, image, shape == Shape.POSTER ? 320 : 480, shape == Shape.POSTER ? 480 : 270);
+        ImageLoader.load(img, image, poster(shape) ? 360 : 480, poster(shape) ? 540 : 270);
 
         final TextView t = Ui.oneLine(Ui.medium(c, title, 16, Ui.TEXT2));
         t.setPadding(Ui.dp(c, 2), Ui.dp(c, 12), 0, 0);
@@ -138,7 +142,7 @@ public final class Cards {
         h.setTypeface(Ui.semibold());
         h.setPadding(Ui.dp(c, 64), Ui.dp(c, 18), 0, Ui.dp(c, 6));
         box.addView(h);
-        int cardW = shape == Shape.POSTER ? Ui.dp(c, 160) : shape == Shape.CHANNEL ? Ui.dp(c, 220) : Ui.dp(c, 300);
+        int cardW = shape == Shape.HOME_POSTER ? Ui.dp(c, 196) : shape == Shape.POSTER ? Ui.dp(c, 160) : shape == Shape.CHANNEL ? Ui.dp(c, 220) : Ui.dp(c, 300);
         int gap = Ui.dp(c, 32);
         int cols = Math.max(1, (usable + gap) / (cardW + gap));
         LinearLayout row = null;
@@ -252,7 +256,45 @@ public final class Cards {
         }
         sv.addView(row);
         box.addView(sv);
+        // Home: what the card you're on is (filled in and shown by HomePeek), like Netflix
+        LinearLayout info = new LinearLayout(c);
+        info.setOrientation(LinearLayout.VERTICAL);
+        info.setTag("info");
+        info.setPadding(Ui.dp(c, 64), 0, Ui.dp(c, 64), Ui.dp(c, 8));
+        info.setVisibility(View.GONE);
+        box.addView(info, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         return box;
+    }
+
+    /** The details area under a card's shelf (see shelf()), or null. */
+    static LinearLayout infoBox(View card) {
+        View row = card == null ? null : (View) card.getParent();
+        View sv = row == null ? null : (View) row.getParent();
+        View box = sv == null ? null : (View) sv.getParent();
+        if (!(box instanceof LinearLayout)) return null;
+        View info = ((LinearLayout) box).findViewWithTag("info");
+        return info instanceof LinearLayout ? (LinearLayout) info : null;
+    }
+
+    /** The UK age rating as a round badge in the BBFC's colours ("15" pink, "18" red…). */
+    static TextView ratingBadge(Context c, String cert) {
+        TextView t = Ui.title(c, cert, cert.length() > 2 ? 11 : 13);
+        t.setGravity(Gravity.CENTER);
+        int bg, fg = Color.WHITE;
+        switch (cert.toUpperCase(java.util.Locale.UK)) {
+            case "U": bg = 0xFF00A651; break;
+            case "PG": bg = 0xFFFDB913; fg = 0xFF111111; break;
+            case "12": case "12A": bg = 0xFFF7941D; break;
+            case "15": bg = 0xFFE7378F; break;
+            case "18": case "R18": bg = 0xFFE21D2B; break;
+            default: bg = 0xFF555560; break;
+        }
+        t.setTextColor(fg);
+        android.graphics.drawable.GradientDrawable d = new android.graphics.drawable.GradientDrawable();
+        d.setShape(android.graphics.drawable.GradientDrawable.OVAL);
+        d.setColor(bg);
+        t.setBackground(d);
+        return t;
     }
 
     /**

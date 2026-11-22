@@ -334,7 +334,7 @@ public class HomeActivity extends Activity {
             Cards.OnMenu m = r.sourceKey == null ? favMenu : new Cards.OnMenu() {
                 public void menu(Item it, View card) { recMenu(r, it, card); }
             };
-            LinearLayout shelf = Cards.shelf(this, r.title, r.items, Cards.Shape.POSTER, prefs, pick, m);
+            LinearLayout shelf = Cards.shelf(this, r.title, r.items, Cards.Shape.HOME_POSTER, prefs, pick, m);
             if (r.sourceKey != null) ((TextView) shelf.getChildAt(0)).setText(Cards.titleWithMenuHint(this, r.title, "for options"));
             remoteRows.addView(shelf);
         }
@@ -365,6 +365,7 @@ public class HomeActivity extends Activity {
 
     private void add(LinearLayout parent, String title, List<Item> items, Cards.Shape shape) {
         if (items == null || items.isEmpty()) return;
+        if (shape == Cards.Shape.POSTER) shape = Cards.Shape.HOME_POSTER; // Home's posters are big, like Netflix
         parent.addView(Cards.shelf(this, title, items, shape, prefs, pick, favMenu));
     }
 
